@@ -7,6 +7,7 @@ function createChatStore() {
 	]);
 	const isConnected = writable(false);
 	const isStreaming = writable(false);
+	const isThinking = writable(false);
 	const useEvaluator = writable(true);
 
 	let ws: WebSocket | null = null;
@@ -24,6 +25,7 @@ function createChatStore() {
 		ws.onclose = () => {
 			isConnected.set(false);
 			isStreaming.set(false);
+			isThinking.set(false);
 		};
 
 		ws.onerror = () => {
@@ -45,6 +47,7 @@ function createChatStore() {
 	}
 
 	function handleStreamChunk(chunk: string) {
+		isThinking.set(false);
 		messages.update((msgs) => {
 			const last = msgs[msgs.length - 1];
 
@@ -62,6 +65,7 @@ function createChatStore() {
 
 	function handleStreamEnd(metadata?: WsMetadata) {
 		isStreaming.set(false);
+		isThinking.set(false);
 		messages.update((msgs) => {
 			const last = msgs[msgs.length - 1];
 			if (last?.streaming) {
@@ -75,6 +79,7 @@ function createChatStore() {
 		if (!ws || !text.trim()) return;
 
 		messages.update((msgs) => [...msgs, { user: 'User', msg: text }]);
+		isThinking.set(true);
 
 		const payload: WsPayload = { uuid, message: text, use_evaluator: get(useEvaluator) };
 		ws.send(JSON.stringify(payload));
@@ -93,6 +98,7 @@ function createChatStore() {
 		messages,
 		isConnected,
 		isStreaming,
+		isThinking,
 		useEvaluator,
 		connect,
 		send,

@@ -1,14 +1,20 @@
 use agents_core::{AgentError, Worker, WorkerResult, WorkerType};
 use agents_llm::{LlmClient, LlmStream};
 use async_trait::async_trait;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::prompts::SEARCH_WORKER_PROMPT;
 
+#[derive(Debug, Serialize)]
+struct SerperRequest {
+    q: String,
+    num: u8,
+}
+
 #[derive(Debug, Deserialize)]
-struct SerpApiResponse {
-    organic_results: Option<Vec<OrganicResult>>,
+struct SerperResponse {
+    organic: Option<Vec<OrganicResult>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,7 +33,7 @@ pub struct SearchWorker {
 impl SearchWorker {
     pub fn new(model: &str, api_key: String) -> Result<Self, AgentError> {
         if api_key.is_empty() {
-            return Err(AgentError::ExternalApi("SERPAPI_KEY not configured".into()));
+            return Err(AgentError::ExternalApi("SERPER_API_KEY not configured".into()));
         }
         Ok(Self {
             client: LlmClient::new(model),
@@ -37,26 +43,35 @@ impl SearchWorker {
     }
 
     async fn search(&self, query: &str, num_results: u8) -> Result<Vec<OrganicResult>, AgentError> {
-        let url = format!(
-            "https://serpapi.com/search.json?q={}&api_key={}&num={}",
-            urlencoding::encode(query),
-            self.api_key,
-            num_results
-        );
+        info!("SearchWorker: Calling Serper for query: {}", query);
+
+        let request_body = SerperRequest {
+            q: query.to_string(),
+            num: num_results,
+        };
 
         let response = self
             .http
-            .get(&url)
+            .post("https://google.serper.dev/search")
+            .header("X-API-KEY", &self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&request_body)
             .send()
             .await
             .map_err(|e| AgentError::ExternalApi(e.to_string()))?;
 
-        let data: SerpApiResponse = response
-            .json()
-            .await
-            .map_err(|e| AgentError::ExternalApi(e.to_string()))?;
+        let status = response.status();
+        let text = response.text().await.map_err(|e| AgentError::ExternalApi(e.to_string()))?;
 
-        Ok(data.organic_results.unwrap_or_default())
+        info!("SearchWorker: Serper status={}, response_len={}", status, text.len());
+
+        let data: SerperResponse = serde_json::from_str(&text)
+            .map_err(|e| AgentError::ExternalApi(format!("Parse error: {} - body: {}", e, &text[..text.len().min(500)])))?;
+
+        let results = data.organic.unwrap_or_default();
+        info!("SearchWorker: Got {} results", results.len());
+
+        Ok(results)
     }
 
     fn format_results(results: &[OrganicResult]) -> String {
@@ -96,9 +111,11 @@ impl SearchWorker {
 
         let search_results = self.search(query, num_results).await?;
 
+        let formatted = Self::format_results(&search_results);
+        info!("SearchWorker: Formatted results:\n{}", &formatted[..formatted.len().min(500)]);
+
         let context = format!(
-            "Task: {task_description}\n\nSearch Results:\n{}\n\nSynthesize these results into a clear response.",
-            Self::format_results(&search_results)
+            "Task: {task_description}\n\nSearch Results:\n{formatted}\n\nSynthesize these results into a clear response."
         );
 
         self.client.chat_stream(SEARCH_WORKER_PROMPT, &context).await

@@ -7,7 +7,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - WORKER_MODEL=${WORKER_MODEL:-gpt-4o-mini}
-      - SERPAPI_KEY=${SERPAPI_KEY:-}
+      - SERPER_API_KEY=${SERPER_API_KEY:-}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-noreply@example.com}
       - RUST_LOG=${RUST_LOG:-info}

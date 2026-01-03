@@ -3,7 +3,7 @@
 	import { chat } from '$lib/stores/chat';
 	import type { WsMetadata } from '$lib/types';
 
-	const { messages, isConnected, isStreaming, useEvaluator } = chat;
+	const { messages, isConnected, isStreaming, isThinking, useEvaluator } = chat;
 	const WS_URL = 'ws://localhost:8000/ws';
 
 	let inputText = '';
@@ -21,7 +21,7 @@
 		}
 	}
 
-	$: if ($messages) {
+	$: if ($messages || $isThinking) {
 		scrollToBottom();
 	}
 
@@ -72,6 +72,15 @@
 					{/if}
 				</div>
 			{/each}
+			{#if $isThinking}
+				<div class="message bot thinking">
+					<span class="thinking-dots">
+						<span></span>
+						<span></span>
+						<span></span>
+					</span>
+				</div>
+			{/if}
 		</div>
 
 		<div class="input-area">

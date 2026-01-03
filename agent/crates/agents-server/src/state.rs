@@ -22,23 +22,23 @@ impl AppState {
         let orchestrator = Orchestrator::new(&main_model);
         let evaluator = Evaluator::new(&worker_model);
 
-        let serpapi_key = env::var("SERPAPI_KEY").unwrap_or_default();
+        let serper_key = env::var("SERPER_API_KEY").unwrap_or_default();
         let sendgrid_key = env::var("SENDGRID_API_KEY").unwrap_or_default();
         let from_email =
             env::var("SENDGRID_FROM_EMAIL").unwrap_or_else(|_| "noreply@example.com".to_string());
 
         // Create workers - both for registry (non-streaming) and concrete refs (streaming)
         let general_worker = GeneralWorker::new(&worker_model);
-        let search_worker = SearchWorker::new(&worker_model, serpapi_key.clone()).ok();
+        let search_worker = SearchWorker::new(&worker_model, serper_key.clone()).ok();
         let email_worker = EmailWorker::new(&worker_model, sendgrid_key.clone(), from_email.clone()).ok();
 
         let mut workers = WorkerRegistry::new();
         workers.register(Arc::new(GeneralWorker::new(&worker_model)));
 
-        if let Ok(w) = SearchWorker::new(&worker_model, serpapi_key) {
+        if let Ok(w) = SearchWorker::new(&worker_model, serper_key) {
             workers.register(Arc::new(w));
         } else {
-            warn!("SearchWorker disabled: SERPAPI_KEY not configured");
+            warn!("SearchWorker disabled: SERPER_API_KEY not configured");
         }
 
         if let Ok(w) = EmailWorker::new(&worker_model, sendgrid_key, from_email) {
