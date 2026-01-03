@@ -1,10 +1,10 @@
 services:
-  frontend:
+  client:
     build:
-      context: ./frontend
+      context: ./client
       dockerfile: Dockerfile.dev
     volumes:
-      - ./frontend:/app
+      - ./client:/app
       - /app/node_modules
     ports:
       - "3000:3000"

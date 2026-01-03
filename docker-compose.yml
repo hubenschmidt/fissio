@@ -1,6 +1,6 @@
 services:
-  backend:
-    build: ./backend
+  agent:
+    build: ./agent
     ports:
       - "8000:8000"
     environment:
@@ -13,10 +13,10 @@ services:
       - RUST_LOG=${RUST_LOG:-info}
     restart: unless-stopped
 
-  frontend:
-    build: ./frontend
+  client:
+    build: ./client
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      - agent
     restart: unless-stopped
