@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { chat } from '$lib/stores/chat';
 
+	const { messages, isConnected, isStreaming } = chat;
 	const WS_URL = 'ws://localhost:8000/ws';
 
 	let inputText = '';
@@ -19,12 +20,12 @@
 		}
 	}
 
-	$: if ($chat.messages) {
+	$: if ($messages) {
 		scrollToBottom();
 	}
 
 	function handleSend() {
-		if (!inputText.trim() || $chat.isStreaming) return;
+		if (!inputText.trim() || $isStreaming) return;
 		chat.send(inputText);
 		inputText = '';
 	}
@@ -39,13 +40,13 @@
 
 <div class="app">
 	<header>
-		<div class="status" class:connected={$chat.isConnected}></div>
+		<div class="status" class:connected={$isConnected}></div>
 		<b>agents-rs</b>
 	</header>
 
 	<main>
 		<div class="messages" bind:this={messagesContainer}>
-			{#each $chat.messages as message}
+			{#each $messages as message}
 				<div
 					class="message"
 					class:user={message.user === 'User'}
@@ -62,12 +63,12 @@
 				bind:value={inputText}
 				onkeydown={handleKeydown}
 				placeholder="Type a message..."
-				disabled={!$chat.isConnected}
+				disabled={!$isConnected}
 				rows="1"
 			></textarea>
 			<button
 				onclick={handleSend}
-				disabled={!$chat.isConnected || $chat.isStreaming || !inputText.trim()}
+				disabled={!$isConnected || $isStreaming || !inputText.trim()}
 			>
 				Send
 			</button>

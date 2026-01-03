@@ -4,7 +4,7 @@ use async_openai::{
     types::{
         ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
         ChatCompletionRequestUserMessageArgs, CreateChatCompletionRequestArgs,
-        ResponseFormat, ResponseFormatJsonObject,
+        ResponseFormat,
     },
     Client,
 };
@@ -93,13 +93,13 @@ impl LlmClient {
             let chat_msg = match msg.role.as_str() {
                 "user" => ChatCompletionRequestMessage::User(
                     ChatCompletionRequestUserMessageArgs::default()
-                        .content(&msg.content)
+                        .content(msg.content.clone())
                         .build()
                         .map_err(|e| AgentError::LlmError(e.to_string()))?,
                 ),
                 "assistant" => ChatCompletionRequestMessage::Assistant(
                     async_openai::types::ChatCompletionRequestAssistantMessageArgs::default()
-                        .content(&msg.content)
+                        .content(msg.content.clone())
                         .build()
                         .map_err(|e| AgentError::LlmError(e.to_string()))?,
                 ),
@@ -154,9 +154,7 @@ impl LlmClient {
     ) -> Result<T, AgentError> {
         let request = CreateChatCompletionRequestArgs::default()
             .model(model)
-            .response_format(ResponseFormat::JsonObject(ResponseFormatJsonObject {
-                r#type: async_openai::types::ResponseFormatJsonObjectType::JsonObject,
-            }))
+            .response_format(ResponseFormat::JsonObject)
             .messages(vec![
                 ChatCompletionRequestMessage::System(
                     ChatCompletionRequestSystemMessageArgs::default()
