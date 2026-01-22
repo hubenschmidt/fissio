@@ -1,9 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/agent-config",
     "crates/agent-core",
-    "crates/agent-llm",
-    "crates/agent-pipeline",
+    "crates/agent-engine",
+    "crates/agent-network",
     "crates/agent-server",
 ]
 
@@ -50,6 +51,7 @@ dotenvy = "0.15"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 
 # Internal crates
+agent-config = { path = "crates/agent-config" }
 agent-core = { path = "crates/agent-core" }
-agent-llm = { path = "crates/agent-llm" }
-agent-pipeline = { path = "crates/agent-pipeline" }
+agent-engine = { path = "crates/agent-engine" }
+agent-network = { path = "crates/agent-network" }

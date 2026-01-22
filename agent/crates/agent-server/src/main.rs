@@ -4,16 +4,15 @@ mod handlers;
 mod services;
 mod ws;
 
-use std::env;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use agent_config::{EdgeEndpoint, PresetRegistry};
 use agent_core::ModelConfig;
-use agent_llm::discover_models;
-use agent_pipeline::{
-    EmailWorker, Evaluator, Frontline, GeneralWorker, Orchestrator, PipelineRunner, SearchWorker,
-    WorkerRegistry,
-};
+use agent_network::discover_models;
+
+use crate::dto::{EdgeInfo, NodeInfo, PipelineInfo};
 use anyhow::Result;
 use axum::body::Body;
 use axum::http::{Request, Response};
@@ -35,8 +34,9 @@ fn cloud_models() -> Vec<ModelConfig> {
 }
 
 pub struct ServerState {
-    pub pipeline: PipelineRunner,
     pub models: Vec<ModelConfig>,
+    pub presets: PresetRegistry,
+    pub pipeline_infos: Vec<PipelineInfo>,
 }
 
 impl ServerState {
@@ -111,41 +111,6 @@ async fn main() -> Result<()> {
 async fn init_server_state() -> ServerState {
     let discovery_future = discover_models(OLLAMA_HOST);
 
-    let serper_key = env::var("SERPER_API_KEY").unwrap_or_default();
-    let sendgrid_key = env::var("SENDGRID_API_KEY").unwrap_or_default();
-    let from_email = env::var("SENDGRID_FROM_EMAIL").unwrap_or_else(|_| "noreply@example.com".into());
-
-    let frontline = Frontline::new();
-    let orchestrator = Orchestrator::new();
-    let evaluator = Evaluator::new();
-
-    let general_worker = GeneralWorker::new();
-    let search_worker = SearchWorker::new(serper_key.clone()).ok();
-    let email_worker = EmailWorker::new(sendgrid_key.clone(), from_email.clone()).ok();
-
-    let mut workers = WorkerRegistry::new();
-    workers.register(Arc::new(GeneralWorker::new()));
-
-    match SearchWorker::new(serper_key) {
-        Ok(w) => workers.register(Arc::new(w)),
-        Err(_) => warn!("SearchWorker disabled: SERPER_API_KEY not configured"),
-    }
-
-    match EmailWorker::new(sendgrid_key, from_email) {
-        Ok(w) => workers.register(Arc::new(w)),
-        Err(_) => warn!("EmailWorker disabled: SENDGRID_API_KEY not configured"),
-    }
-
-    let pipeline = PipelineRunner::new(
-        frontline,
-        orchestrator,
-        evaluator,
-        workers,
-        general_worker,
-        search_worker,
-        email_worker,
-    );
-
     let mut models = cloud_models();
     match discovery_future.await {
         Ok(ollama_models) => {
@@ -160,5 +125,51 @@ async fn init_server_state() -> ServerState {
         }
     }
 
-    ServerState { pipeline, models }
+    // Load pipeline presets
+    let presets_dir = Path::new("presets");
+    let presets = PresetRegistry::load_from_dir(presets_dir).unwrap_or_else(|e| {
+        warn!("Failed to load presets: {}", e);
+        PresetRegistry::new()
+    });
+
+    fn endpoint_to_json(ep: &EdgeEndpoint) -> serde_json::Value {
+        match ep {
+            EdgeEndpoint::Single(s) => serde_json::Value::String(s.clone()),
+            EdgeEndpoint::Multiple(v) => serde_json::Value::Array(
+                v.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            ),
+        }
+    }
+
+    let pipeline_infos: Vec<PipelineInfo> = presets
+        .list()
+        .iter()
+        .map(|p| PipelineInfo {
+            id: p.id.clone(),
+            name: p.name.clone(),
+            description: p.description.clone(),
+            nodes: p.nodes.iter().map(|n| NodeInfo {
+                id: n.id.clone(),
+                node_type: format!("{:?}", n.node_type).to_lowercase(),
+                model: n.model.clone(),
+                prompt: n.prompt.clone(),
+            }).collect(),
+            edges: p.edges.iter().map(|e| EdgeInfo {
+                from: endpoint_to_json(&e.from),
+                to: endpoint_to_json(&e.to),
+                edge_type: if e.edge_type == agent_config::EdgeType::Direct {
+                    None
+                } else {
+                    Some(format!("{:?}", e.edge_type).to_lowercase())
+                },
+            }).collect(),
+        })
+        .collect();
+
+    info!("Loaded {} pipeline presets", pipeline_infos.len());
+    for p in &pipeline_infos {
+        info!("  - {} ({})", p.name, p.id);
+    }
+
+    ServerState { models, presets, pipeline_infos }
 }

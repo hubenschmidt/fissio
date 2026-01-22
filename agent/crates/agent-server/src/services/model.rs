@@ -1,6 +1,5 @@
 use agent_core::ModelConfig;
-use agent_llm::unload_model;
-use agent_pipeline::StreamResponse;
+use agent_network::{unload_model, LlmClient};
 use futures::StreamExt;
 use tracing::info;
 
@@ -15,10 +14,9 @@ pub async fn warmup(
     let model = state.get_model(model_id);
     info!("Warming up model: {}", model.name);
 
-    // Unload previous model in parallel with warming up new model
     let (_, warmup_result) = tokio::join!(
         unload_previous(state, previous_model_id),
-        do_warmup(state, &model)
+        do_warmup(&model)
     );
     warmup_result?;
 
@@ -26,16 +24,12 @@ pub async fn warmup(
     Ok(model)
 }
 
-async fn do_warmup(state: &ServerState, model: &ModelConfig) -> Result<(), AppError> {
-    let result = state
-        .pipeline
-        .process_stream("hi", &[], model)
+async fn do_warmup(model: &ModelConfig) -> Result<(), AppError> {
+    let client = LlmClient::new(&model.model, model.api_base.as_deref());
+    let mut stream = client
+        .chat_stream("You are a helpful assistant.", &[], "hi")
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    let StreamResponse::Stream(mut stream) = result else {
-        return Ok(());
-    };
 
     while stream.next().await.is_some() {}
     Ok(())

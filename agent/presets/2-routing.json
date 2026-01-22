@@ -1,0 +1,16 @@
+{
+  "id": "routing",
+  "name": "Routing",
+  "description": "Direct input into a specialized sub-task, ensuring separation of concerns",
+  "nodes": [
+    { "id": "router", "type": "router", "model": null, "config": { "routes": ["code", "creative", "factual"] } },
+    { "id": "code_llm", "type": "llm", "model": null, "prompt": "You are a coding assistant. Help with programming tasks." },
+    { "id": "creative_llm", "type": "llm", "model": null, "prompt": "You are a creative writer. Help with creative writing tasks." },
+    { "id": "factual_llm", "type": "llm", "model": null, "prompt": "You are a factual assistant. Provide accurate information." }
+  ],
+  "edges": [
+    { "from": "input", "to": "router" },
+    { "from": "router", "to": ["code_llm", "creative_llm", "factual_llm"], "edge_type": "conditional" },
+    { "from": ["code_llm", "creative_llm", "factual_llm"], "to": "output" }
+  ]
+}

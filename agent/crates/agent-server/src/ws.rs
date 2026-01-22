@@ -1,9 +1,10 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use agent_config::{EdgeConfig, EdgeEndpoint, EdgeType, NodeConfig, NodeType, PipelineConfig};
 use agent_core::{Message as CoreMessage, ModelConfig};
-use agent_llm::{LlmStream, OllamaClient, OllamaMetrics, StreamChunk};
-use agent_pipeline::{PipelineRunner, StreamResponse};
+use agent_engine::{EngineOutput, PipelineEngine};
+use agent_network::{LlmClient, LlmStream, OllamaClient, OllamaMetrics, StreamChunk};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -15,7 +16,7 @@ use futures::{stream::SplitSink, SinkExt, StreamExt};
 use serde::Serialize;
 use tracing::{error, info};
 
-use crate::dto::{InitResponse, WsMetadata, WsPayload, WsResponse};
+use crate::dto::{InitResponse, RuntimePipelineConfig, WsMetadata, WsPayload, WsResponse};
 use crate::services::model;
 use crate::ServerState;
 
@@ -23,6 +24,63 @@ struct StreamResult {
     input_tokens: u32,
     output_tokens: u32,
     ollama_metrics: Option<OllamaMetrics>,
+}
+
+fn runtime_to_pipeline_config(runtime: &RuntimePipelineConfig) -> PipelineConfig {
+    let nodes = runtime.nodes.iter().map(|n| {
+        let node_type = match n.node_type.as_str() {
+            "llm" => NodeType::Llm,
+            "gate" => NodeType::Gate,
+            "router" => NodeType::Router,
+            "coordinator" => NodeType::Coordinator,
+            "aggregator" => NodeType::Aggregator,
+            "orchestrator" => NodeType::Orchestrator,
+            "worker" => NodeType::Worker,
+            "synthesizer" => NodeType::Synthesizer,
+            "evaluator" => NodeType::Evaluator,
+            _ => NodeType::Llm,
+        };
+        NodeConfig {
+            id: n.id.clone(),
+            node_type,
+            model: n.model.clone(),
+            config: serde_json::Value::Null,
+            prompt: n.prompt.clone(),
+        }
+    }).collect();
+
+    let edges = runtime.edges.iter().map(|e| {
+        let from = json_to_endpoint(&e.from);
+        let to = json_to_endpoint(&e.to);
+        let edge_type = e.edge_type.as_deref().map(|t| match t {
+            "parallel" => EdgeType::Parallel,
+            "dynamic" => EdgeType::Dynamic,
+            "conditional" => EdgeType::Conditional,
+            _ => EdgeType::Direct,
+        }).unwrap_or(EdgeType::Direct);
+        EdgeConfig { from, to, edge_type }
+    }).collect();
+
+    PipelineConfig {
+        id: "runtime".to_string(),
+        name: "Runtime Config".to_string(),
+        description: String::new(),
+        nodes,
+        edges,
+    }
+}
+
+fn json_to_endpoint(val: &serde_json::Value) -> EdgeEndpoint {
+    match val {
+        serde_json::Value::String(s) => EdgeEndpoint::Single(s.clone()),
+        serde_json::Value::Array(arr) => {
+            let strings: Vec<String> = arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect();
+            EdgeEndpoint::Multiple(strings)
+        }
+        _ => EdgeEndpoint::Single(String::new()),
+    }
 }
 
 async fn send_json<T: Serialize>(sender: &mut SplitSink<WebSocket, Message>, data: &T) -> bool {
@@ -103,26 +161,59 @@ async fn process_ollama(
     }
 }
 
-async fn process_pipeline(
+async fn process_direct_chat(
     sender: &mut SplitSink<WebSocket, Message>,
-    pipeline: &PipelineRunner,
-    message: &str,
-    history: &[CoreMessage],
     model: &ModelConfig,
+    history: &[CoreMessage],
+    message: &str,
 ) -> StreamResult {
-    let stream_result = pipeline.process_stream(message, history, model).await;
+    let client = LlmClient::new(&model.model, model.api_base.as_deref());
+    let result = client
+        .chat_stream("You are a helpful assistant.", history, message)
+        .await;
 
-    match stream_result {
-        Ok(StreamResponse::Stream(stream)) => {
+    match result {
+        Ok(stream) => {
             let (_content, input_tokens, output_tokens) = consume_stream(sender, stream).await;
             StreamResult { input_tokens, output_tokens, ollama_metrics: None }
         }
-        Ok(StreamResponse::Complete(response)) => {
+        Err(e) => {
+            error!("Direct chat error: {}", e);
+            send_error(sender).await;
+            StreamResult { input_tokens: 0, output_tokens: 0, ollama_metrics: None }
+        }
+    }
+}
+
+async fn process_engine(
+    sender: &mut SplitSink<WebSocket, Message>,
+    config: &PipelineConfig,
+    message: &str,
+    history: &[CoreMessage],
+    models: &[ModelConfig],
+    default_model: &ModelConfig,
+    node_overrides: std::collections::HashMap<String, String>,
+) -> StreamResult {
+    let engine = PipelineEngine::new(
+        config.clone(),
+        models.to_vec(),
+        default_model.clone(),
+        node_overrides,
+    );
+
+    let result = engine.execute_stream(message, history).await;
+
+    match result {
+        Ok(EngineOutput::Stream(stream)) => {
+            let (_content, input_tokens, output_tokens) = consume_stream(sender, stream).await;
+            StreamResult { input_tokens, output_tokens, ollama_metrics: None }
+        }
+        Ok(EngineOutput::Complete(response)) => {
             let _ = send_json(sender, &WsResponse::stream(&response)).await;
             StreamResult { input_tokens: 0, output_tokens: 0, ollama_metrics: None }
         }
         Err(e) => {
-            error!("Pipeline error: {}", e);
+            error!("Engine error: {}", e);
             send_error(sender).await;
             StreamResult {
                 input_tokens: 0,
@@ -165,7 +256,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
         let uuid = payload.uuid.unwrap_or_else(|| "anonymous".to_string());
         info!("Connection initialized: {}", uuid);
 
-        let init_resp = InitResponse { models: state.models.clone() };
+        let init_resp = InitResponse {
+            models: state.models.clone(),
+            pipelines: state.pipeline_infos.clone(),
+        };
         if !send_json(&mut sender, &init_resp).await {
             return;
         }
@@ -231,9 +325,18 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
         let start = Instant::now();
         let use_ollama_native = payload.verbose && model.api_base.is_some();
 
-        let result = match use_ollama_native {
-            true => process_ollama(&mut sender, &model, &history, &message).await,
-            false => process_pipeline(&mut sender, &state.pipeline, &message, &history, &model).await,
+        // Priority: runtime config > preset ID > default pipeline
+        let result = if use_ollama_native {
+            process_ollama(&mut sender, &model, &history, &message).await
+        } else if let Some(ref runtime_config) = payload.pipeline_config {
+            let config = runtime_to_pipeline_config(runtime_config);
+            info!("Using runtime pipeline config ({} nodes)", config.nodes.len());
+            process_engine(&mut sender, &config, &message, &history, &state.models, &model, payload.node_models).await
+        } else if let Some(config) = payload.pipeline_id.as_deref().and_then(|id| state.presets.get(id)) {
+            info!("Using pipeline preset: {}", config.name);
+            process_engine(&mut sender, config, &message, &history, &state.models, &model, payload.node_models).await
+        } else {
+            process_direct_chat(&mut sender, &model, &history, &message).await
         };
 
         let elapsed_ms = start.elapsed().as_millis() as u64;

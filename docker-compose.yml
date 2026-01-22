@@ -7,12 +7,31 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - ./agent/.env
+    volumes:
+      - ./agent:/app
+      - agent-target:/app/target
+    command: cargo watch --poll -x "run --bin agent-server"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
     restart: unless-stopped
 
   client:
     build: ./client
     ports:
       - "3001:3001"
+      - "24678:24678"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    command: npm run dev -- --host
     depends_on:
-      - agent
+      agent:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  agent-target:

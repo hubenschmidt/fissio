@@ -8,9 +8,10 @@ name = "agent-server"
 path = "src/main.rs"
 
 [dependencies]
+agent-config.workspace = true
 agent-core.workspace = true
-agent-llm.workspace = true
-agent-pipeline.workspace = true
+agent-engine.workspace = true
+agent-network.workspace = true
 axum.workspace = true
 tokio.workspace = true
 tower.workspace = true

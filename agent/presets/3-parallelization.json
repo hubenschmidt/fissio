@@ -1,0 +1,18 @@
+{
+  "id": "parallelization",
+  "name": "Parallelization",
+  "description": "Break down tasks and run multiple subtasks concurrently",
+  "nodes": [
+    { "id": "coordinator", "type": "coordinator", "model": null, "prompt": "Break this task into independent subtasks that can be processed in parallel." },
+    { "id": "llm1", "type": "llm", "model": null, "prompt": "Process subtask 1." },
+    { "id": "llm2", "type": "llm", "model": null, "prompt": "Process subtask 2." },
+    { "id": "llm3", "type": "llm", "model": null, "prompt": "Process subtask 3." },
+    { "id": "aggregator", "type": "aggregator", "model": null, "prompt": "Combine the results from all subtasks into a coherent response." }
+  ],
+  "edges": [
+    { "from": "input", "to": "coordinator" },
+    { "from": "coordinator", "to": ["llm1", "llm2", "llm3"], "edge_type": "parallel" },
+    { "from": ["llm1", "llm2", "llm3"], "to": "aggregator" },
+    { "from": "aggregator", "to": "output" }
+  ]
+}

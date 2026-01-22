@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "agent-config"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "agent-core"
 version = "0.1.0"
 dependencies = [
@@ -13,7 +22,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent-llm"
+name = "agent-engine"
+version = "0.1.0"
+dependencies = [
+ "agent-config",
+ "agent-core",
+ "agent-network",
+ "async-recursion",
+ "async-trait",
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "agent-network"
 version = "0.1.0"
 dependencies = [
  "agent-core",
@@ -28,27 +54,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent-pipeline"
-version = "0.1.0"
-dependencies = [
- "agent-core",
- "agent-llm",
- "async-trait",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tracing",
- "urlencoding",
-]
-
-[[package]]
 name = "agent-server"
 version = "0.1.0"
 dependencies = [
+ "agent-config",
  "agent-core",
- "agent-llm",
- "agent-pipeline",
+ "agent-engine",
+ "agent-network",
  "anyhow",
  "axum",
  "dotenvy",
@@ -101,6 +113,17 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "async-recursion"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b43422f69d8ff38f95f1b2bb76517c91589a924d1559a0e935d7c8ce0274c11"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2078,12 +2101,6 @@ dependencies = [
  "percent-encoding",
  "serde",
 ]
-
-[[package]]
-name = "urlencoding"
-version = "2.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "utf-8"

@@ -1,0 +1,18 @@
+{
+  "id": "prompt-chaining",
+  "name": "Prompt Chaining",
+  "description": "Decompose into fixed sub-tasks with gate checks between steps",
+  "nodes": [
+    { "id": "llm1", "type": "llm", "model": null, "prompt": "Analyze the user's request and extract key requirements." },
+    { "id": "gate1", "type": "gate", "model": null, "config": { "check": "requirements_clear" } },
+    { "id": "llm2", "type": "llm", "model": null, "prompt": "Based on the requirements, draft an initial response." },
+    { "id": "llm3", "type": "llm", "model": null, "prompt": "Refine and finalize the response." }
+  ],
+  "edges": [
+    { "from": "input", "to": "llm1" },
+    { "from": "llm1", "to": "gate1" },
+    { "from": "gate1", "to": "llm2" },
+    { "from": "llm2", "to": "llm3" },
+    { "from": "llm3", "to": "output" }
+  ]
+}

@@ -1,5 +1,5 @@
 [package]
-name = "agent-llm"
+name = "agent-network"
 version.workspace = true
 edition.workspace = true
 

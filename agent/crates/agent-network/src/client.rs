@@ -1,13 +1,14 @@
 use std::pin::Pin;
 use std::time::Instant;
 
-use agent_core::AgentError;
+use agent_core::{AgentError, Message, MessageRole};
 use async_openai::{
     config::OpenAIConfig,
     types::{
-        ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs,
-        ChatCompletionRequestUserMessageArgs, ChatCompletionStreamOptions,
-        CreateChatCompletionRequestArgs, CreateChatCompletionResponse, ResponseFormat,
+        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
+        ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
+        ChatCompletionStreamOptions, CreateChatCompletionRequestArgs,
+        CreateChatCompletionResponse, ResponseFormat,
     },
     Client,
 };
@@ -121,10 +122,43 @@ impl LlmClient {
         extract_response(response, start.elapsed().as_millis() as u64)
     }
 
-    pub async fn chat_stream(&self, system_prompt: &str, user_input: &str) -> Result<LlmStream, AgentError> {
+    pub async fn chat_stream(&self, system_prompt: &str, history: &[Message], user_input: &str) -> Result<LlmStream, AgentError> {
         use futures::StreamExt;
 
-        let messages = build_messages(system_prompt, user_input)?;
+        let mut messages = vec![
+            ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessageArgs::default()
+                    .content(system_prompt)
+                    .build()
+                    .map_err(llm_err)?,
+            ),
+        ];
+
+        for msg in history {
+            let role_msg = match msg.role {
+                MessageRole::User => ChatCompletionRequestMessage::User(
+                    ChatCompletionRequestUserMessageArgs::default()
+                        .content(&*msg.content)
+                        .build()
+                        .map_err(llm_err)?,
+                ),
+                MessageRole::Assistant => ChatCompletionRequestMessage::Assistant(
+                    ChatCompletionRequestAssistantMessageArgs::default()
+                        .content(&*msg.content)
+                        .build()
+                        .map_err(llm_err)?,
+                ),
+            };
+            messages.push(role_msg);
+        }
+
+        messages.push(ChatCompletionRequestMessage::User(
+            ChatCompletionRequestUserMessageArgs::default()
+                .content(user_input)
+                .build()
+                .map_err(llm_err)?,
+        ));
+
         let request = CreateChatCompletionRequestArgs::default()
             .model(&self.default_model)
             .stream_options(ChatCompletionStreamOptions { include_usage: true })

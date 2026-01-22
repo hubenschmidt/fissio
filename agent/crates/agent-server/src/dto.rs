@@ -29,11 +29,41 @@ pub struct UnloadResponse {
 
 // === WebSocket DTOs ===
 
+use std::collections::HashMap;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RuntimeNodeConfig {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub node_type: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RuntimeEdgeConfig {
+    pub from: serde_json::Value,
+    pub to: serde_json::Value,
+    #[serde(default)]
+    pub edge_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RuntimePipelineConfig {
+    pub nodes: Vec<RuntimeNodeConfig>,
+    pub edges: Vec<RuntimeEdgeConfig>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct WsPayload {
     pub uuid: Option<String>,
     pub message: Option<String>,
     pub model_id: Option<String>,
+    pub pipeline_id: Option<String>,
+    #[serde(default)]
+    pub node_models: HashMap<String, String>,
     #[serde(default)]
     pub init: bool,
     #[serde(default)]
@@ -42,11 +72,38 @@ pub struct WsPayload {
     pub unload_model_id: Option<String>,
     #[serde(default)]
     pub history: Vec<Message>,
+    pub pipeline_config: Option<RuntimePipelineConfig>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeInfo {
+    pub id: String,
+    pub node_type: String,
+    pub model: Option<String>,
+    pub prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgeInfo {
+    pub from: serde_json::Value,
+    pub to: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edge_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PipelineInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub nodes: Vec<NodeInfo>,
+    pub edges: Vec<EdgeInfo>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct InitResponse {
     pub models: Vec<ModelConfig>,
+    pub pipelines: Vec<PipelineInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]

@@ -1,0 +1,15 @@
+{
+  "id": "evaluator-optimizer",
+  "name": "Evaluator-Optimizer",
+  "description": "LLM output is validated by another, with feedback loop for improvement",
+  "nodes": [
+    { "id": "generator", "type": "llm", "model": null, "prompt": "Generate a response to the user's request." },
+    { "id": "evaluator", "type": "evaluator", "model": null, "prompt": "Evaluate the generated response for quality, accuracy, and completeness. Provide feedback for improvement if needed." }
+  ],
+  "edges": [
+    { "from": "input", "to": "generator" },
+    { "from": "generator", "to": "evaluator" },
+    { "from": "evaluator", "to": "generator", "edge_type": "conditional" },
+    { "from": "evaluator", "to": "output" }
+  ]
+}

@@ -4,13 +4,16 @@
 	import Header from '$lib/components/Header.svelte';
 	import ChatMessage from '$lib/components/ChatMessage.svelte';
 	import ChatInput from '$lib/components/ChatInput.svelte';
+	import PipelineEditor from '$lib/components/PipelineEditor.svelte';
+	import type { PipelineInfo } from '$lib/types';
 
-	const { messages, isConnected, isStreaming, isThinking, models, selectedModel, modelStatus } = chat;
+	const { messages, isConnected, isStreaming, isThinking, models, selectedModel, pipelines, selectedPipeline, pipelineConfig, pipelineModified, modelStatus } = chat;
 	const WS_URL = 'ws://localhost:8000/ws';
 
 	let inputText = '';
 	let messagesContainer: HTMLDivElement;
 	let prevModel = '';
+	let showEditor = false;
 
 	onMount(() => {
 		chat.connect(WS_URL);
@@ -61,6 +64,47 @@
 		chat.send(inputText);
 		inputText = '';
 	}
+
+	$: if ($selectedPipeline === '__new__') {
+		createNewPipeline();
+	}
+
+	function createNewPipeline() {
+		const id = `custom_${Date.now()}`;
+		const blank: PipelineInfo = {
+			id,
+			name: 'New Agent',
+			description: '',
+			nodes: [
+				{ id: 'llm1', node_type: 'llm', model: null, prompt: 'You are a helpful assistant.' }
+			],
+			edges: [
+				{ from: 'input', to: 'llm1' },
+				{ from: 'llm1', to: 'output' }
+			]
+		};
+		chat.pipelineConfig.set(blank);
+		chat.pipelineModified.set(true);
+		showEditor = true;
+	}
+
+	function openEditor() {
+		showEditor = true;
+	}
+
+	function closeEditor() {
+		showEditor = false;
+		// If it was a new pipeline, add it to the list
+		const config = $pipelineConfig;
+		if (config && $selectedPipeline === '__new__') {
+			chat.addCustomPipeline(config);
+		}
+	}
+
+	function handlePipelineUpdate(config: PipelineInfo) {
+		chat.pipelineConfig.set(config);
+		chat.pipelineModified.set(true);
+	}
 </script>
 
 <div class="app">
@@ -68,7 +112,11 @@
 		isConnected={$isConnected}
 		models={$models}
 		bind:selectedModel={$selectedModel}
+		pipelines={$pipelines}
+		bind:selectedPipeline={$selectedPipeline}
 		modelStatus={$modelStatus}
+		pipelineModified={$pipelineModified}
+		onEditPipeline={openEditor}
 	/>
 
 	<main>
@@ -100,3 +148,21 @@
 		/>
 	</main>
 </div>
+
+{#if showEditor}
+	{#if $pipelineConfig}
+		<PipelineEditor
+			config={$pipelineConfig}
+			models={$models}
+			onUpdate={handlePipelineUpdate}
+			onClose={closeEditor}
+		/>
+	{:else}
+		<div style="position:fixed;inset:0;z-index:1000;background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:white;">
+			<div>
+				<p>No pipeline config loaded</p>
+				<button onclick={closeEditor}>Close</button>
+			</div>
+		</div>
+	{/if}
+{/if}

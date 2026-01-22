@@ -15,6 +15,45 @@ export type ModelConfig = {
 	api_base: string | null;
 };
 
+export type NodeInfo = {
+	id: string;
+	node_type: string;
+	model: string | null;
+	prompt: string | null;
+};
+
+export type EdgeInfo = {
+	from: string | string[];
+	to: string | string[];
+	edge_type?: string;
+};
+
+export type PipelineInfo = {
+	id: string;
+	name: string;
+	description: string;
+	nodes: NodeInfo[];
+	edges: EdgeInfo[];
+};
+
+export type RuntimeNodeConfig = {
+	id: string;
+	type: string;
+	model?: string | null;
+	prompt?: string | null;
+};
+
+export type RuntimeEdgeConfig = {
+	from: string | string[];
+	to: string | string[];
+	edge_type?: string;
+};
+
+export type RuntimePipelineConfig = {
+	nodes: RuntimeNodeConfig[];
+	edges: RuntimeEdgeConfig[];
+};
+
 export type ChatMsg = {
 	user: 'User' | 'Bot';
 	msg: string;
@@ -26,6 +65,9 @@ export type WsPayload = {
 	uuid?: string;
 	message?: string;
 	model_id?: string;
+	pipeline_id?: string;
+	node_models?: Record<string, string>;
+	pipeline_config?: RuntimePipelineConfig;
 	init?: boolean;
 	verbose?: boolean;
 	wake_model_id?: string;
@@ -37,5 +79,6 @@ export type WsResponse = {
 	on_chat_model_end?: boolean;
 	metadata?: WsMetadata;
 	models?: ModelConfig[];
+	pipelines?: PipelineInfo[];
 	model_status?: string;
 };
