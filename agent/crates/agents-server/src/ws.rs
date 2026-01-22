@@ -27,9 +27,12 @@ pub async fn ws_handler(
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let (mut sender, mut receiver) = socket.split();
-    let mut uuid = String::new();
 
-    while let Some(Ok(msg)) = receiver.next().await {
+    // Wait for init message first
+    let uuid = loop {
+        let Some(Ok(msg)) = receiver.next().await else {
+            return;
+        };
         let Message::Text(text) = msg else { continue };
 
         let payload: WsPayload = match serde_json::from_str(&text) {
@@ -40,21 +43,34 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             }
         };
 
-        info!("WS payload: {:?}", payload);
-
-        if payload.init {
-            uuid = payload.uuid.unwrap_or_else(|| "anonymous".to_string());
-            info!("Connection initialized: {}", uuid);
-
-            let init_resp = InitResponse {
-                models: state.models.clone(),
-            };
-            let init_msg = serde_json::to_string(&init_resp).expect("serialize");
-            if sender.send(Message::Text(init_msg.into())).await.is_err() {
-                break;
-            }
+        if !payload.init {
             continue;
         }
+
+        let uuid = payload.uuid.unwrap_or_else(|| "anonymous".to_string());
+        info!("Connection initialized: {}", uuid);
+
+        let init_resp = InitResponse {
+            models: state.models.clone(),
+        };
+        let init_msg = serde_json::to_string(&init_resp).expect("serialize");
+        if sender.send(Message::Text(init_msg.into())).await.is_err() {
+            return;
+        }
+        break uuid;
+    };
+
+    // Process messages with immutable uuid
+    while let Some(Ok(msg)) = receiver.next().await {
+        let Message::Text(text) = msg else { continue };
+
+        let payload: WsPayload = match serde_json::from_str(&text) {
+            Ok(p) => p,
+            Err(e) => {
+                error!("JSON parse error: {}", e);
+                continue;
+            }
+        };
 
         if let Some(wake_model_id) = &payload.wake_model_id {
             let status_msg = serde_json::to_string(&WsResponse::model_status("loading")).expect("serialize");
