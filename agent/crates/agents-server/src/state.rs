@@ -27,29 +27,17 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new() -> Self {
-        let mut models = cloud_models();
+        // Start model discovery immediately (network I/O)
+        let discovery_future = discover_models(OLLAMA_HOST);
 
-        match discover_models(OLLAMA_HOST).await {
-            Ok(ollama_models) => {
-                info!("Found {} local Ollama models", ollama_models.len());
-                for m in &ollama_models {
-                    info!("  - {} ({})", m.name, m.id);
-                }
-                models.extend(ollama_models);
-            }
-            Err(e) => {
-                warn!("Ollama discovery failed (is Ollama running?): {}", e);
-            }
-        }
+        // Do all sync initialization while discovery runs
+        let serper_key = env::var("SERPER_API_KEY").unwrap_or_default();
+        let sendgrid_key = env::var("SENDGRID_API_KEY").unwrap_or_default();
+        let from_email = env::var("SENDGRID_FROM_EMAIL").unwrap_or_else(|_| "noreply@example.com".into());
 
         let frontline = Frontline::new();
         let orchestrator = Orchestrator::new();
         let evaluator = Evaluator::new();
-
-        let serper_key = env::var("SERPER_API_KEY").unwrap_or_default();
-        let sendgrid_key = env::var("SENDGRID_API_KEY").unwrap_or_default();
-        let from_email =
-            env::var("SENDGRID_FROM_EMAIL").unwrap_or_else(|_| "noreply@example.com".to_string());
 
         let general_worker = GeneralWorker::new();
         let search_worker = SearchWorker::new(serper_key.clone()).ok();
@@ -58,16 +46,14 @@ impl AppState {
         let mut workers = WorkerRegistry::new();
         workers.register(Arc::new(GeneralWorker::new()));
 
-        if let Ok(w) = SearchWorker::new(serper_key) {
-            workers.register(Arc::new(w));
-        } else {
-            warn!("SearchWorker disabled: SERPER_API_KEY not configured");
+        match SearchWorker::new(serper_key) {
+            Ok(w) => workers.register(Arc::new(w)),
+            Err(_) => warn!("SearchWorker disabled: SERPER_API_KEY not configured"),
         }
 
-        if let Ok(w) = EmailWorker::new(sendgrid_key, from_email) {
-            workers.register(Arc::new(w));
-        } else {
-            warn!("EmailWorker disabled: SENDGRID_API_KEY not configured");
+        match EmailWorker::new(sendgrid_key, from_email) {
+            Ok(w) => workers.register(Arc::new(w)),
+            Err(_) => warn!("EmailWorker disabled: SENDGRID_API_KEY not configured"),
         }
 
         let pipeline = PipelineRunner::new(
@@ -80,6 +66,21 @@ impl AppState {
             email_worker,
         );
 
+        // Now await discovery results
+        let mut models = cloud_models();
+        match discovery_future.await {
+            Ok(ollama_models) => {
+                info!("Found {} local Ollama models", ollama_models.len());
+                for m in &ollama_models {
+                    info!("  - {} ({})", m.name, m.id);
+                }
+                models.extend(ollama_models);
+            }
+            Err(e) => {
+                warn!("Ollama discovery failed (is Ollama running?): {}", e);
+            }
+        }
+
         Self {
             pipeline,
             conversations: DashMap::new(),
@@ -91,8 +92,9 @@ impl AppState {
         self.models
             .iter()
             .find(|m| m.id == model_id)
+            .or_else(|| self.models.first())
             .cloned()
-            .unwrap_or_else(|| self.models[0].clone())
+            .expect("at least one model must be configured")
     }
 
     pub fn get_conversation(&self, uuid: &str) -> Vec<Message> {

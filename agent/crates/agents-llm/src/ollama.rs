@@ -87,27 +87,17 @@ pub async fn unload_model(ollama_host: &str, model_name: &str) -> Result<(), Age
 }
 
 fn format_display_name(model_name: &str, _details: &OllamaModelDetails) -> String {
-    let last_segment = model_name.split('/').last().unwrap_or(model_name);
-    let parts: Vec<&str> = last_segment.splitn(2, ':').collect();
+    let last_segment = model_name.rsplit('/').next().unwrap_or(model_name);
+    let (base, tag) = last_segment.split_once(':').unwrap_or((last_segment, ""));
 
-    let base = parts[0];
-    let tag = parts.get(1).copied().unwrap_or("");
-
-    // Capitalize first letter
-    let display_base = base
-        .chars()
-        .next()
-        .map(|c| c.to_uppercase().to_string())
-        .unwrap_or_default()
-        + &base.chars().skip(1).collect::<String>();
-
-    let tag_suffix = if tag.is_empty() {
-        String::new()
-    } else {
-        format!(":{}", tag)
+    let mut chars = base.chars();
+    let display_base = match chars.next() {
+        Some(c) => c.to_uppercase().chain(chars).collect(),
+        None => String::new(),
     };
 
-    format!("{}{} (Local)", display_base, tag_suffix)
+    let tag_suffix = if tag.is_empty() { String::new() } else { format!(":{tag}") };
+    format!("{display_base}{tag_suffix} (Local)")
 }
 
 fn slugify(name: &str) -> String {
@@ -359,7 +349,10 @@ impl OllamaMetricsCollector {
     }
 
     pub fn get_metrics(&self) -> OllamaMetrics {
-        self.metrics.lock().map(|m| m.clone()).unwrap_or_default()
+        let Ok(guard) = self.metrics.lock() else {
+            return OllamaMetrics::default();
+        };
+        guard.clone()
     }
 }
 

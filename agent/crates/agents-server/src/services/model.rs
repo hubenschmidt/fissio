@@ -14,25 +14,33 @@ pub async fn warmup(
     model_id: &str,
     previous_model_id: Option<&str>,
 ) -> Result<ModelConfig, AppError> {
-    unload_previous(state, previous_model_id).await;
-
     let model = state.get_model(model_id);
     info!("Warming up model: {}", model.name);
 
+    // Unload previous model in parallel with warming up new model
+    let (_, warmup_result) = tokio::join!(
+        unload_previous(state, previous_model_id),
+        do_warmup(state, &model)
+    );
+    warmup_result?;
+
+    info!("Model {} ready", model.name);
+    Ok(model)
+}
+
+async fn do_warmup(state: &Arc<AppState>, model: &ModelConfig) -> Result<(), AppError> {
     let result = state
         .pipeline
-        .process_stream("hi", &[], &model)
+        .process_stream("hi", &[], model)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     let StreamResponse::Stream(mut stream) = result else {
-        return Ok(model);
+        return Ok(());
     };
 
     while stream.next().await.is_some() {}
-
-    info!("Model {} ready", model.name);
-    Ok(model)
+    Ok(())
 }
 
 pub async fn unload(state: &Arc<AppState>, model_id: &str) -> Result<(), AppError> {

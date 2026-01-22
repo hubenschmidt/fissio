@@ -115,6 +115,39 @@ impl EmailWorker {
         let status = self.send_email(to, subject, body).await?;
         Ok(format!("Email sent to {}\nSubject: {}\nStatus: {}", to, subject, status))
     }
+
+    async fn resolve_body(
+        &self,
+        body_param: &str,
+        task_description: &str,
+        to: &str,
+        subject: &str,
+        feedback: Option<&str>,
+        model: &ModelConfig,
+    ) -> Result<String, AgentError> {
+        if !body_param.is_empty() {
+            return Ok(body_param.to_string());
+        }
+
+        let feedback_section = feedback
+            .map(|fb| format!("\n\nPrevious feedback: {fb}"))
+            .unwrap_or_default();
+
+        let context = format!(
+            "Task: {task_description}\n\nTo: {to}\nSubject: {subject}{feedback_section}\n\nCompose the email content."
+        );
+
+        let client = Self::create_client(model);
+        let resp = client.chat(EMAIL_WORKER_PROMPT, &context).await?;
+        Ok(resp.content)
+    }
+
+    async fn send_and_format(&self, to: &str, subject: &str, body: &str) -> Result<WorkerResult, AgentError> {
+        match self.send_email(to, subject, body).await {
+            Ok(status) => Ok(WorkerResult::ok(format!("Email sent to {to}\nSubject: {subject}\nStatus: {status}"))),
+            Err(e) => Ok(WorkerResult::err(e)),
+        }
+    }
 }
 
 #[async_trait]
@@ -136,30 +169,7 @@ impl Worker for EmailWorker {
         let subject = parameters.get("subject").and_then(|v| v.as_str()).unwrap_or("");
         let body_param = parameters.get("body").and_then(|v| v.as_str()).unwrap_or("");
 
-        let body = if body_param.is_empty() {
-            let feedback_section = feedback
-                .map(|fb| format!("\n\nPrevious feedback: {fb}"))
-                .unwrap_or_default();
-
-            let context = format!(
-                "Task: {task_description}\n\nTo: {to}\nSubject: {subject}{feedback_section}\n\nCompose the email content."
-            );
-
-            let client = Self::create_client(model);
-            match client.chat(EMAIL_WORKER_PROMPT, &context).await {
-                Ok(resp) => resp.content,
-                Err(e) => return Ok(WorkerResult::err(e)),
-            }
-        } else {
-            body_param.to_string()
-        };
-
-        match self.send_email(to, subject, &body).await {
-            Ok(status) => Ok(WorkerResult::ok(format!(
-                "Email sent to {}\nSubject: {}\nStatus: {}",
-                to, subject, status
-            ))),
-            Err(e) => Ok(WorkerResult::err(e)),
-        }
+        let body = self.resolve_body(body_param, task_description, to, subject, feedback, model).await?;
+        self.send_and_format(to, subject, &body).await
     }
 }

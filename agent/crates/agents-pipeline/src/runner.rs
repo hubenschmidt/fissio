@@ -131,8 +131,8 @@ impl PipelineRunner {
             .await?;
 
         if !worker_result.success {
-            let error = worker_result.error.unwrap_or_else(|| "Unknown error".into());
-            return Ok(format!("Error: {}", error));
+            let error = worker_result.error.as_deref().unwrap_or("Unknown error");
+            return Ok(format!("Error: {error}"));
         }
 
         Ok(worker_result.output)
@@ -160,9 +160,9 @@ impl PipelineRunner {
                 .await?;
 
             if !worker_result.success {
-                let error = worker_result.error.unwrap_or_else(|| "Unknown error".into());
-                info!("WORKER: Failed with error: {}", error);
-                return Ok(format!("Error: {}", error));
+                let error = worker_result.error.as_deref().unwrap_or("Unknown error");
+                info!("WORKER: Failed with error: {error}");
+                return Ok(format!("Error: {error}"));
             }
 
             info!("WORKER: Completed successfully");
@@ -185,7 +185,7 @@ impl PipelineRunner {
             info!(
                 "EVALUATOR: Failed (score: {}/100) - {}",
                 eval_result.score,
-                &eval_result.feedback[..eval_result.feedback.len().min(80)]
+                eval_result.feedback.get(..80).unwrap_or(&eval_result.feedback)
             );
 
             feedback = Some(format!(

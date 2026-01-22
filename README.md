@@ -38,7 +38,7 @@ A multi-agent chat system with a Svelte 5 frontend and Rust backend featuring re
 
 ## Technologies Used
 
-- **Client:** Svelte 5, SvelteKit, TypeScript
+- **Client:** Svelte 5, SvelteKit, JavaScript
 - **Agent:** Rust 1.92, Axum, Tokio
 - **LLM:** OpenAI API, Ollama (local models)
 

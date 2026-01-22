@@ -68,7 +68,7 @@ impl SearchWorker {
         info!("SearchWorker: Serper status={}, response_len={}", status, text.len());
 
         let data: SerperResponse = serde_json::from_str(&text)
-            .map_err(|e| AgentError::ExternalApi(format!("Parse error: {} - body: {}", e, &text[..text.len().min(500)])))?;
+            .map_err(|e| AgentError::ExternalApi(format!("Parse error: {e} - body: {}", text.get(..500).unwrap_or(&text))))?;
 
         let results = data.organic.unwrap_or_default();
         info!("SearchWorker: Got {} results", results.len());
@@ -115,7 +115,7 @@ impl SearchWorker {
         let search_results = self.search(query, num_results).await?;
 
         let formatted = Self::format_results(&search_results);
-        info!("SearchWorker: Formatted results:\n{}", &formatted[..formatted.len().min(500)]);
+        info!("SearchWorker: Formatted results:\n{}", formatted.get(..500).unwrap_or(&formatted));
 
         let context = format!(
             "Task: {task_description}\n\nSearch Results:\n{formatted}\n\nSynthesize these results into a clear response."

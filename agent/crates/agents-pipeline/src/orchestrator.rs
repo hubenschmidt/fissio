@@ -23,16 +23,14 @@ impl Orchestrator {
     ) -> Result<OrchestratorDecision, AgentError> {
         info!("ORCHESTRATOR: Routing request with model {}", model.name);
 
-        let history_context = if history.is_empty() {
-            String::new()
-        } else {
-            let recent: Vec<_> = history.iter().rev().take(6).rev().collect();
-            recent
-                .iter()
-                .map(|m| format!("{:?}: {}", m.role, m.content))
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
+        let history_context: String = history
+            .iter()
+            .rev()
+            .take(6)
+            .rev()
+            .map(|m| format!("{:?}: {}", m.role, m.content))
+            .collect::<Vec<_>>()
+            .join("\n");
 
         let context = format!(
             "Conversation History:\n{history_context}\n\nCurrent User Request: {user_input}\n\nAnalyze this request and determine which worker should handle it."
@@ -46,7 +44,7 @@ impl Orchestrator {
         info!(
             "ORCHESTRATOR: Routing to {:?} - {}",
             decision.worker_type,
-            &decision.task_description[..decision.task_description.len().min(80)]
+            decision.task_description.get(..80).unwrap_or(&decision.task_description)
         );
 
         Ok(decision)
