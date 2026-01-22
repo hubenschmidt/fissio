@@ -7,14 +7,14 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 COPY Cargo.toml Cargo.lock* ./
 COPY crates ./crates
 
-RUN cargo build --release --bin agents-server
+RUN cargo build --release --bin agent-server
 
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/agents-server /usr/local/bin/
+COPY --from=builder /app/target/release/agent-server /usr/local/bin/
 
 EXPOSE 8000
 
-CMD ["agents-server"]
+CMD ["agent-server"]

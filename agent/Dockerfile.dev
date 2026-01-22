@@ -7,4 +7,4 @@ RUN cargo install cargo-watch
 
 EXPOSE 8000
 
-CMD ["cargo", "watch", "-x", "run --bin agents-server"]
+CMD ["cargo", "watch", "-x", "run --bin agent-server"]

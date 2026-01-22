@@ -1,11 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/agents-core",
-    "crates/agents-llm",
-    "crates/agents-workers",
-    "crates/agents-pipeline",
-    "crates/agents-server",
+    "crates/agent-core",
+    "crates/agent-llm",
+    "crates/agent-pipeline",
+    "crates/agent-server",
 ]
 
 [workspace.package]
@@ -44,9 +43,6 @@ async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# Concurrent collections
-dashmap = "6.1"
-
 # Environment
 dotenvy = "0.15"
 
@@ -54,7 +50,6 @@ dotenvy = "0.15"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 
 # Internal crates
-agents-core = { path = "crates/agents-core" }
-agents-llm = { path = "crates/agents-llm" }
-agents-workers = { path = "crates/agents-workers" }
-agents-pipeline = { path = "crates/agents-pipeline" }
+agent-core = { path = "crates/agent-core" }
+agent-llm = { path = "crates/agent-llm" }
+agent-pipeline = { path = "crates/agent-pipeline" }
