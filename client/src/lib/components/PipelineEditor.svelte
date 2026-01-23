@@ -3,8 +3,16 @@
 
 	export let config: PipelineInfo;
 	export let models: ModelConfig[];
+	export let templates: PipelineInfo[] = [];
 	export let onUpdate: (config: PipelineInfo) => void;
 	export let onClose: () => void;
+	export let onSave: (config: PipelineInfo) => void = () => {};
+
+	function applyTemplate(templateId: string) {
+		const tpl = templates.find(t => t.id === templateId);
+		if (!tpl) return;
+		onUpdate({ ...config, nodes: structuredClone(tpl.nodes), edges: structuredClone(tpl.edges) });
+	}
 
 	const nodeTypes = ['llm', 'worker', 'coordinator', 'aggregator', 'orchestrator', 'synthesizer', 'router', 'gate', 'evaluator'];
 
@@ -69,7 +77,14 @@
 			placeholder="Pipeline name..."
 		/>
 		<div class="header-actions">
+			<select class="template-select" on:change={(e) => { applyTemplate(e.currentTarget.value); e.currentTarget.value = ''; }}>
+				<option value="">Apply template...</option>
+				{#each templates as tpl}
+					<option value={tpl.id}>{tpl.name}</option>
+				{/each}
+			</select>
 			<button class="add-btn" on:click={addNode}>+ Add Node</button>
+			<button class="save-btn" on:click={() => onSave(config)}>Save</button>
 			<button class="close-btn" on:click={onClose}>Done</button>
 		</div>
 	</div>
@@ -221,7 +236,17 @@
 		gap: 0.5rem;
 	}
 
-	.add-btn, .close-btn {
+	.template-select {
+		padding: 0.4rem 0.5rem;
+		border-radius: 4px;
+		border: 1px solid var(--border, #333);
+		background: var(--bg-secondary, #2a2a2a);
+		color: var(--text, #fff);
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+
+	.add-btn, .close-btn, .save-btn {
 		padding: 0.4rem 0.75rem;
 		border-radius: 4px;
 		border: 1px solid var(--border, #333);
@@ -232,6 +257,7 @@
 	}
 
 	.add-btn:hover { background: #3b82f6; }
+	.save-btn:hover { background: #22c55e; }
 	.close-btn:hover { background: var(--border, #333); }
 
 	.editor-body {

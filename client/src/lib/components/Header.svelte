@@ -10,6 +10,7 @@
 	export let modelStatus: string;
 	export let pipelineModified: boolean = false;
 	export let onEditPipeline: () => void = () => {};
+	export let onDeletePipeline: (id: string) => void = () => {};
 
 	$: statusText = modelStatus === 'loading' ? 'Loading model...' :
 		modelStatus === 'unloading' ? 'Unloading model...' : '';
@@ -26,12 +27,19 @@
 		{/if}
 		<div class="selectors" class:no-status={!statusText}>
 			<div class="pipeline-wrapper">
-				<select bind:value={selectedPipeline} class="pipeline-select" disabled={!isConnected || !!statusText} title="Pipeline Pattern">
+				<select bind:value={selectedPipeline} class="pipeline-select" disabled={!isConnected || !!statusText} title="Agent Config">
 					{#each pipelines as pipeline}
 						<option value={pipeline.id} title={pipeline.description}>{pipeline.name}</option>
 					{/each}
 					<option value="__new__">-- Define agent... --</option>
 				</select>
+				{#if currentPipeline}
+					<button
+						class="delete-btn"
+						onclick={() => onDeletePipeline(selectedPipeline)}
+						title="Delete config"
+					>✕</button>
+				{/if}
 				<button
 					class="edit-btn"
 					class:modified={pipelineModified}
@@ -120,6 +128,22 @@
 	.edit-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.delete-btn {
+		padding: 0.25rem 0.4rem;
+		border: 1px solid var(--border);
+		border-left: none;
+		border-radius: 0;
+		background: var(--bg-secondary);
+		color: #ef4444;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+
+	.delete-btn:hover {
+		background: #ef4444;
+		color: white;
 	}
 
 	.pipeline-select:disabled,

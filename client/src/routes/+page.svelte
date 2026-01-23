@@ -7,7 +7,7 @@
 	import PipelineEditor from '$lib/components/PipelineEditor.svelte';
 	import type { PipelineInfo } from '$lib/types';
 
-	const { messages, isConnected, isStreaming, isThinking, models, selectedModel, pipelines, selectedPipeline, pipelineConfig, pipelineModified, modelStatus } = chat;
+	const { messages, isConnected, isStreaming, isThinking, models, selectedModel, templates, pipelines, selectedPipeline, pipelineConfig, pipelineModified, modelStatus } = chat;
 	const WS_URL = 'ws://localhost:8000/ws';
 
 	let inputText = '';
@@ -94,16 +94,20 @@
 
 	function closeEditor() {
 		showEditor = false;
-		// If it was a new pipeline, add it to the list
-		const config = $pipelineConfig;
-		if (config && $selectedPipeline === '__new__') {
-			chat.addCustomPipeline(config);
-		}
 	}
 
 	function handlePipelineUpdate(config: PipelineInfo) {
 		chat.pipelineConfig.set(config);
 		chat.pipelineModified.set(true);
+	}
+
+	async function handleSavePipeline(config: PipelineInfo) {
+		await chat.savePipeline(config);
+		showEditor = false;
+	}
+
+	function handleDeletePipeline(id: string) {
+		chat.deletePipeline(id);
 	}
 </script>
 
@@ -117,6 +121,7 @@
 		modelStatus={$modelStatus}
 		pipelineModified={$pipelineModified}
 		onEditPipeline={openEditor}
+		onDeletePipeline={handleDeletePipeline}
 	/>
 
 	<main>
@@ -154,8 +159,10 @@
 		<PipelineEditor
 			config={$pipelineConfig}
 			models={$models}
+			templates={$templates}
 			onUpdate={handlePipelineUpdate}
 			onClose={closeEditor}
+			onSave={handleSavePipeline}
 		/>
 	{:else}
 		<div style="position:fixed;inset:0;z-index:1000;background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:white;">

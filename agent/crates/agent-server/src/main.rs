@@ -1,3 +1,4 @@
+mod db;
 mod dto;
 mod error;
 mod handlers;
@@ -5,8 +6,10 @@ mod services;
 mod ws;
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use tokio::sync::RwLock;
 
 use agent_config::{EdgeEndpoint, PresetRegistry};
 use agent_core::ModelConfig;
@@ -36,7 +39,9 @@ fn cloud_models() -> Vec<ModelConfig> {
 pub struct ServerState {
     pub models: Vec<ModelConfig>,
     pub presets: PresetRegistry,
-    pub pipeline_infos: Vec<PipelineInfo>,
+    pub templates: Vec<PipelineInfo>,
+    pub configs: RwLock<Vec<PipelineInfo>>,
+    pub db: Mutex<rusqlite::Connection>,
 }
 
 impl ServerState {
@@ -91,6 +96,9 @@ async fn main() -> Result<()> {
         .route("/ws", get(ws::ws_handler))
         .route("/wake", post(handlers::model::wake))
         .route("/unload", post(handlers::model::unload))
+        .route("/pipelines", get(handlers::pipeline::list))
+        .route("/pipelines/save", post(handlers::pipeline::save))
+        .route("/pipelines/delete", post(handlers::pipeline::delete))
         .layer(trace_layer);
 
     let app = Router::new()
@@ -141,7 +149,7 @@ async fn init_server_state() -> ServerState {
         }
     }
 
-    let pipeline_infos: Vec<PipelineInfo> = presets
+    let templates: Vec<PipelineInfo> = presets
         .list()
         .iter()
         .map(|p| PipelineInfo {
@@ -166,10 +174,20 @@ async fn init_server_state() -> ServerState {
         })
         .collect();
 
-    info!("Loaded {} pipeline presets", pipeline_infos.len());
-    for p in &pipeline_infos {
+    info!("Loaded {} pipeline templates", templates.len());
+    for p in &templates {
         info!("  - {} ({})", p.name, p.id);
     }
 
-    ServerState { models, presets, pipeline_infos }
+    let conn = db::init_db("data/pipelines.db").expect("failed to initialize database");
+    let configs = db::list_user_pipelines(&conn);
+    info!("Loaded {} saved configs", configs.len());
+
+    ServerState {
+        models,
+        presets,
+        templates,
+        configs: RwLock::new(configs),
+        db: Mutex::new(conn),
+    }
 }

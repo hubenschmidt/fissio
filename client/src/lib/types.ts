@@ -79,6 +79,7 @@ export type WsResponse = {
 	on_chat_model_end?: boolean;
 	metadata?: WsMetadata;
 	models?: ModelConfig[];
-	pipelines?: PipelineInfo[];
+	templates?: PipelineInfo[];
+	configs?: PipelineInfo[];
 	model_status?: string;
 };

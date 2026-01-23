@@ -258,7 +258,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
 
         let init_resp = InitResponse {
             models: state.models.clone(),
-            pipelines: state.pipeline_infos.clone(),
+            templates: state.templates.clone(),
+            configs: state.configs.read().await.clone(),
         };
         if !send_json(&mut sender, &init_resp).await {
             return;
@@ -267,8 +268,18 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
     };
 
     // Process messages with immutable uuid
-    while let Some(Ok(msg)) = receiver.next().await {
-        let Message::Text(text) = msg else { continue };
+    while let Some(result) = receiver.next().await {
+        let msg = match result {
+            Ok(m) => m,
+            Err(e) => {
+                error!("WS receive error for {}: {}", uuid, e);
+                break;
+            }
+        };
+        let Message::Text(text) = msg else {
+            info!("WS non-text message for {}: {:?}", uuid, msg);
+            continue;
+        };
 
         let payload: WsPayload = match serde_json::from_str(&text) {
             Ok(p) => p,

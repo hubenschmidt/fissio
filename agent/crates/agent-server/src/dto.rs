@@ -75,7 +75,7 @@ pub struct WsPayload {
     pub pipeline_config: Option<RuntimePipelineConfig>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeInfo {
     pub id: String,
     pub node_type: String,
@@ -83,7 +83,7 @@ pub struct NodeInfo {
     pub prompt: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EdgeInfo {
     pub from: serde_json::Value,
     pub to: serde_json::Value,
@@ -100,10 +100,34 @@ pub struct PipelineInfo {
     pub edges: Vec<EdgeInfo>,
 }
 
+// === Pipeline CRUD DTOs ===
+
+#[derive(Debug, Deserialize)]
+pub struct SavePipelineRequest {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub nodes: Vec<NodeInfo>,
+    pub edges: Vec<EdgeInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SavePipelineResponse {
+    pub success: bool,
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeletePipelineRequest {
+    pub id: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct InitResponse {
     pub models: Vec<ModelConfig>,
-    pub pipelines: Vec<PipelineInfo>,
+    pub templates: Vec<PipelineInfo>,
+    pub configs: Vec<PipelineInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]

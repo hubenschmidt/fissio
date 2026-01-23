@@ -1,4 +1,4 @@
-import { writable, get, derived } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import type { ChatMsg, ModelConfig, PipelineInfo, RuntimePipelineConfig, WsPayload, WsResponse, WsMetadata } from '$lib/types';
 import { devMode } from './settings';
 
@@ -11,24 +11,25 @@ function createChatStore() {
 	const isThinking = writable(false);
 	const models = writable<ModelConfig[]>([]);
 	const selectedModel = writable<string>('');
+	const templates = writable<PipelineInfo[]>([]);
 	const pipelines = writable<PipelineInfo[]>([]);
 	const selectedPipeline = writable<string>('');
 	const nodeModelOverrides = writable<Record<string, string>>({});
 	const modelStatus = writable<string>('');
 
-	// Mutable pipeline config (cloned from preset, user can modify)
+	// Mutable pipeline config (cloned from selected config, user can modify)
 	const pipelineConfig = writable<PipelineInfo | null>(null);
 	const pipelineModified = writable(false);
 
 	let ws: WebSocket | null = null;
 	const uuid = crypto.randomUUID();
 
-	// When preset changes, clone it as the working config
+	// When selected config changes, clone it as the working config
 	selectedPipeline.subscribe((id) => {
-		const presets = get(pipelines);
-		const preset = presets.find((p) => p.id === id);
-		if (preset) {
-			pipelineConfig.set(structuredClone(preset));
+		const configs = get(pipelines);
+		const config = configs.find((p) => p.id === id);
+		if (config) {
+			pipelineConfig.set(structuredClone(config));
 			pipelineModified.set(false);
 			nodeModelOverrides.set({});
 		}
@@ -43,13 +44,15 @@ function createChatStore() {
 			ws?.send(JSON.stringify(payload));
 		};
 
-		ws.onclose = () => {
+		ws.onclose = (ev) => {
+			console.log('[ws] Connection closed:', ev.code, ev.reason, ev.wasClean);
 			isConnected.set(false);
 			isStreaming.set(false);
 			isThinking.set(false);
 		};
 
-		ws.onerror = () => {
+		ws.onerror = (ev) => {
+			console.error('[ws] Connection error:', ev);
 			isConnected.set(false);
 		};
 
@@ -63,14 +66,18 @@ function createChatStore() {
 				}
 			}
 
-			if (data.pipelines) {
-				pipelines.set(data.pipelines);
-				if (data.pipelines.length > 0 && !get(selectedPipeline)) {
-					selectedPipeline.set(data.pipelines[0].id);
+			if (data.templates) {
+				templates.set(data.templates);
+			}
+
+			if (data.configs) {
+				pipelines.set(data.configs);
+				if (data.configs.length > 0 && !get(selectedPipeline)) {
+					selectedPipeline.set(data.configs[0].id);
 				}
 			}
 
-			if (data.models || data.pipelines) {
+			if (data.models || data.templates || data.configs) {
 				return;
 			}
 
@@ -142,8 +149,6 @@ function createChatStore() {
 		isThinking.set(true);
 
 		const config = get(pipelineConfig);
-		const modified = get(pipelineModified);
-		const overrides = get(nodeModelOverrides);
 
 		const payload: WsPayload = {
 			uuid,
@@ -152,14 +157,9 @@ function createChatStore() {
 			verbose: get(devMode)
 		};
 
-		// Send full config if modified, otherwise just pipeline_id
-		if (config && modified) {
+		// Always send full config for user-saved pipelines
+		if (config) {
 			payload.pipeline_config = toRuntimeConfig(config);
-		} else {
-			payload.pipeline_id = get(selectedPipeline);
-			if (Object.keys(overrides).length > 0) {
-				payload.node_models = overrides;
-			}
 		}
 
 		ws.send(JSON.stringify(payload));
@@ -216,9 +216,52 @@ function createChatStore() {
 		}
 	}
 
-	function addCustomPipeline(config: PipelineInfo) {
-		pipelines.update((list) => [...list, config]);
+	async function savePipeline(config: PipelineInfo) {
+		const body = {
+			id: config.id,
+			name: config.name,
+			description: config.description,
+			nodes: config.nodes,
+			edges: config.edges
+		};
+		console.log('[save] Sending save request:', config.id, config.name);
+		try {
+			const res = await fetch('http://localhost:8000/pipelines/save', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(body)
+			});
+			console.log('[save] Response status:', res.status);
+			if (!res.ok) {
+				console.error('[save] Save failed:', await res.text());
+				return;
+			}
+		} catch (e) {
+			console.error('[save] Fetch error:', e);
+			return;
+		}
+		pipelines.update((list) => {
+			const idx = list.findIndex((p) => p.id === config.id);
+			if (idx >= 0) return [...list.slice(0, idx), config, ...list.slice(idx + 1)];
+			return [...list, config];
+		});
+		console.log('[save] Updated pipelines store, setting selectedPipeline:', config.id);
 		selectedPipeline.set(config.id);
+		pipelineModified.set(false);
+	}
+
+	async function deletePipeline(id: string) {
+		const res = await fetch('http://localhost:8000/pipelines/delete', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ id })
+		});
+		if (!res.ok) return;
+		pipelines.update((list) => list.filter((p) => p.id !== id));
+		if (get(selectedPipeline) === id) {
+			const remaining = get(pipelines);
+			selectedPipeline.set(remaining.length > 0 ? remaining[0].id : '');
+		}
 	}
 
 	function wake(modelId: string, previousModelId?: string) {
@@ -261,6 +304,7 @@ function createChatStore() {
 		isThinking,
 		models,
 		selectedModel,
+		templates,
 		pipelines,
 		selectedPipeline,
 		nodeModelOverrides,
@@ -279,7 +323,8 @@ function createChatStore() {
 		removeNode,
 		updateEdges,
 		resetPipeline,
-		addCustomPipeline
+		savePipeline,
+		deletePipeline
 	};
 }
 

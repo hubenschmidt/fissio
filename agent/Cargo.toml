@@ -50,6 +50,9 @@ dotenvy = "0.15"
 # UUID
 uuid = { version = "1.11", features = ["v4", "serde"] }
 
+# Database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
 # Internal crates
 agent-config = { path = "crates/agent-config" }
 agent-core = { path = "crates/agent-core" }
