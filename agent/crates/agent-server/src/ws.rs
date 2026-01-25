@@ -295,7 +295,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
         }
 
         // Handle chat message
-        let Some(message) = payload.message else { continue };
+        let Some(ref message) = payload.message else { continue };
 
         let model_id = payload.model_id.as_deref().unwrap_or("");
         let model = state.get_model(model_id);
@@ -304,24 +304,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<ServerState>) {
             "Message from {} (model: {}): {}...",
             uuid,
             model.name,
-            message.get(..50).unwrap_or(&message)
+            message.get(..50).unwrap_or(message)
         );
 
         let start = Instant::now();
-        let use_ollama_native = payload.verbose && model.api_base.is_some();
-
-        let result = if use_ollama_native {
-            process_ollama(&mut sender, &model, &payload.history, &message).await
-        } else if let Some(ref runtime_config) = payload.pipeline_config {
-            let config = runtime_to_pipeline_config(runtime_config);
-            info!("Using runtime pipeline config ({} nodes)", config.nodes.len());
-            process_engine(&mut sender, &config, &message, &payload.history, &state.models, &model, payload.node_models).await
-        } else if let Some(config) = payload.pipeline_id.as_deref().and_then(|id| state.presets.get(id)) {
-            info!("Using pipeline preset: {}", config.name);
-            process_engine(&mut sender, config, &message, &payload.history, &state.models, &model, payload.node_models).await
-        } else {
-            process_direct_chat(&mut sender, &model, &payload.history, &message).await
-        };
+        let result = route_message(&mut sender, &payload, message, &model, &state).await;
 
         let metadata = build_metadata(&result, start.elapsed().as_millis() as u64);
         info!("Sending metadata: {:?}", metadata);
@@ -364,6 +351,36 @@ async fn handle_unload(
         error!("Unload failed: {:?}", e);
     }
     send_json(sender, &WsResponse::model_status("ready")).await
+}
+
+/// Routes a chat message to the appropriate processor using guard clauses.
+async fn route_message(
+    sender: &mut SplitSink<WebSocket, Message>,
+    payload: &WsPayload,
+    message: &str,
+    model: &ModelConfig,
+    state: &ServerState,
+) -> StreamResult {
+    // Verbose mode with Ollama native API
+    if payload.verbose && model.api_base.is_some() {
+        return process_ollama(sender, model, &payload.history, message).await;
+    }
+
+    // Runtime pipeline config from frontend
+    if let Some(ref runtime_config) = payload.pipeline_config {
+        let config = runtime_to_pipeline_config(runtime_config);
+        info!("Using runtime pipeline config ({} nodes)", config.nodes.len());
+        return process_engine(sender, &config, message, &payload.history, &state.models, model, payload.node_models.clone()).await;
+    }
+
+    // Preset pipeline by ID
+    if let Some(config) = payload.pipeline_id.as_deref().and_then(|id| state.presets.get(id)) {
+        info!("Using pipeline preset: {}", config.name);
+        return process_engine(sender, config, message, &payload.history, &state.models, model, payload.node_models.clone()).await;
+    }
+
+    // Default: direct chat
+    process_direct_chat(sender, model, &payload.history, message).await
 }
 
 /// Builds response metadata from stream result.

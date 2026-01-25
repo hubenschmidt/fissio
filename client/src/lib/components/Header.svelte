@@ -28,6 +28,7 @@
 		<div class="selectors" class:no-status={!statusText}>
 			<div class="pipeline-wrapper">
 				<select bind:value={selectedPipeline} class="pipeline-select" disabled={!isConnected || !!statusText} title="Agent Config">
+					<option value="">Direct Chat</option>
 					{#each pipelines as pipeline}
 						<option value={pipeline.id} title={pipeline.description}>{pipeline.name}</option>
 					{/each}
@@ -39,16 +40,16 @@
 						onclick={() => onDeletePipeline(selectedPipeline)}
 						title="Delete config"
 					>✕</button>
+					<button
+						class="edit-btn"
+						class:modified={pipelineModified}
+						onclick={onEditPipeline}
+						disabled={!isConnected}
+						title="Edit pipeline"
+					>
+						✎
+					</button>
 				{/if}
-				<button
-					class="edit-btn"
-					class:modified={pipelineModified}
-					onclick={onEditPipeline}
-					disabled={!isConnected || !currentPipeline}
-					title="Edit pipeline"
-				>
-					✎
-				</button>
 			</div>
 			<select bind:value={selectedModel} class="model-select" disabled={!isConnected || !!statusText} title="Default Model">
 				<option value="none">-- Unload GPU --</option>

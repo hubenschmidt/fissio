@@ -24,15 +24,17 @@ function createChatStore() {
 	let ws: WebSocket | null = null;
 	const uuid = crypto.randomUUID();
 
-	// When selected config changes, clone it as the working config
+	// When selected config changes, clone it as the working config (or clear for Direct Chat)
 	selectedPipeline.subscribe((id) => {
 		const configs = get(pipelines);
 		const config = configs.find((p) => p.id === id);
 		if (config) {
 			pipelineConfig.set(structuredClone(config));
-			pipelineModified.set(false);
-			nodeModelOverrides.set({});
+		} else {
+			pipelineConfig.set(null);
 		}
+		pipelineModified.set(false);
+		nodeModelOverrides.set({});
 	});
 
 	function connect(url: string) {
