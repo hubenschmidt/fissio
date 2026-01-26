@@ -82,6 +82,7 @@ pub struct WsPayload {
     #[serde(default)]
     pub history: Vec<Message>,
     pub pipeline_config: Option<RuntimePipelineConfig>,
+    pub system_prompt: Option<String>,
 }
 
 // === Pipeline Info Types ===

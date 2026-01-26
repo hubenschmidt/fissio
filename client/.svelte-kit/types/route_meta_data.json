@@ -1,5 +1,8 @@
 {
 	"/": [
 		"src/routes/+page.ts"
+	],
+	"/composer": [
+		"src/routes/composer/+page.ts"
 	]
 }

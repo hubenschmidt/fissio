@@ -10,7 +10,7 @@ use std::time::Instant;
 use agent_config::{EdgeConfig, EdgeEndpoint, EdgeType, NodeConfig, NodeType, PipelineConfig};
 use agent_core::{Message as CoreMessage, ModelConfig};
 use agent_engine::{EngineOutput, PipelineEngine};
-use agent_network::{LlmClient, LlmStream, OllamaClient, OllamaMetrics, StreamChunk};
+use agent_network::{LlmStream, OllamaClient, OllamaMetrics, StreamChunk, UnifiedLlmClient};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -126,13 +126,14 @@ async fn process_ollama(
     model: &ModelConfig,
     history: &[CoreMessage],
     message: &str,
+    system_prompt: &str,
 ) -> StreamResult {
     let api_base = model.api_base.as_ref().expect("ollama requires api_base");
     let client = OllamaClient::new(&model.model, api_base);
     info!("Using native Ollama API for verbose metrics");
 
     let result = client
-        .chat_stream_with_metrics("You are a helpful assistant.", history, message)
+        .chat_stream_with_metrics(system_prompt, history, message)
         .await;
 
     match result {
@@ -152,16 +153,17 @@ async fn process_ollama(
     }
 }
 
-/// Processes a direct chat request (no pipeline).
+/// Processes a direct chat request (routes to OpenAI or Anthropic based on model).
 async fn process_direct_chat(
     sender: &mut SplitSink<WebSocket, Message>,
     model: &ModelConfig,
     history: &[CoreMessage],
     message: &str,
+    system_prompt: &str,
 ) -> StreamResult {
-    let client = LlmClient::new(&model.model, model.api_base.as_deref());
+    let client = UnifiedLlmClient::new(&model.model, model.api_base.as_deref());
     let result = client
-        .chat_stream("You are a helpful assistant.", history, message)
+        .chat_stream(system_prompt, history, message)
         .await;
 
     match result {
@@ -170,7 +172,7 @@ async fn process_direct_chat(
             StreamResult { input_tokens, output_tokens, ollama_metrics: None }
         }
         Err(e) => {
-            error!("Direct chat error: {}", e);
+            error!("Chat error: {}", e);
             send_error(sender).await;
             StreamResult { input_tokens: 0, output_tokens: 0, ollama_metrics: None }
         }
@@ -354,6 +356,8 @@ async fn handle_unload(
     send_json(sender, &WsResponse::model_status("ready")).await
 }
 
+const DEFAULT_SYSTEM_PROMPT: &str = "You are a helpful assistant.";
+
 /// Routes a chat message to the appropriate processor using guard clauses.
 async fn route_message(
     sender: &mut SplitSink<WebSocket, Message>,
@@ -362,9 +366,11 @@ async fn route_message(
     model: &ModelConfig,
     state: &ServerState,
 ) -> StreamResult {
+    let system_prompt = payload.system_prompt.as_deref().unwrap_or(DEFAULT_SYSTEM_PROMPT);
+
     // Verbose mode with Ollama native API
     if payload.verbose && model.api_base.is_some() {
-        return process_ollama(sender, model, &payload.history, message).await;
+        return process_ollama(sender, model, &payload.history, message, system_prompt).await;
     }
 
     // Runtime pipeline config from frontend
@@ -380,8 +386,8 @@ async fn route_message(
         return process_engine(sender, config, message, &payload.history, &state.models, model, payload.node_models.clone()).await;
     }
 
-    // Default: direct chat
-    process_direct_chat(sender, model, &payload.history, message).await
+    // Direct chat (routes to OpenAI or Anthropic based on model name)
+    process_direct_chat(sender, model, &payload.history, message, system_prompt).await
 }
 
 /// Builds response metadata from stream result.

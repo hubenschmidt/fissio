@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use agent_config::{EdgeConfig, EdgeEndpoint, EdgeType, NodeConfig, NodeType, PipelineConfig};
 use agent_core::{AgentError, ModelConfig};
-use agent_network::{LlmClient, LlmStream};
+use agent_network::{LlmStream, UnifiedLlmClient};
 use async_recursion::async_recursion;
 use futures::future::join_all;
 use tokio::sync::RwLock;
@@ -315,7 +315,7 @@ async fn execute_node(
     info!("║     → {}", node_type.action_label());
 
     let content = if node_type.requires_llm() {
-        let client = LlmClient::new(&model.model, model.api_base.as_deref());
+        let client = UnifiedLlmClient::new(&model.model, model.api_base.as_deref());
         let response = client.chat(prompt.unwrap_or(""), input).await?;
         info!("║     ← Response: {} chars", response.content.len());
         response.content

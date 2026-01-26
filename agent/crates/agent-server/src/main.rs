@@ -34,12 +34,38 @@ const OLLAMA_HOST: &str = "http://host.docker.internal:11434";
 
 /// Returns the list of cloud-hosted models (e.g., OpenAI).
 fn cloud_models() -> Vec<ModelConfig> {
-    vec![ModelConfig {
-        id: "openai-gpt4o".into(),
-        name: "GPT-4o (OpenAI)".into(),
-        model: "gpt-4o".into(),
-        api_base: None,
-    }]
+    vec![
+        ModelConfig {
+            id: "openai-gpt5".into(),
+            name: "GPT-5.2 (OpenAI)".into(),
+            model: "gpt-5.2-2025-12-11".into(),
+            api_base: None,
+        },
+        ModelConfig {
+            id: "openai-codex".into(),
+            name: "GPT-5.2 Codex (OpenAI)".into(),
+            model: "gpt-5.2-codex".into(),
+            api_base: None,
+        },
+        ModelConfig {
+            id: "anthropic-opus".into(),
+            name: "Claude Opus 4.5 (Anthropic)".into(),
+            model: "claude-opus-4-5-20251101".into(),
+            api_base: None,
+        },
+        ModelConfig {
+            id: "anthropic-sonnet".into(),
+            name: "Claude Sonnet 4.5 (Anthropic)".into(),
+            model: "claude-sonnet-4-5-20250929".into(),
+            api_base: None,
+        },
+        ModelConfig {
+            id: "anthropic-haiku".into(),
+            name: "Claude Haiku 4.5 (Anthropic)".into(),
+            model: "claude-haiku-4-5-20251001".into(),
+            api_base: None,
+        },
+    ]
 }
 
 /// Shared server state accessible from all handlers.

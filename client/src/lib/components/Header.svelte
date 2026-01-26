@@ -28,11 +28,12 @@
 		<div class="selectors" class:no-status={!statusText}>
 			<div class="pipeline-wrapper">
 				<select bind:value={selectedPipeline} class="pipeline-select" disabled={!isConnected || !!statusText} title="Agent Config">
-					<option value="">Direct Chat</option>
+					<option value="" disabled>-- Select agent --</option>
+					<option value="__direct__">Direct Chat</option>
 					{#each pipelines as pipeline}
 						<option value={pipeline.id} title={pipeline.description}>{pipeline.name}</option>
 					{/each}
-					<option value="__new__">-- Define agent... --</option>
+					<option value="__new__">-- Create agent --</option>
 				</select>
 				{#if currentPipeline}
 					<button

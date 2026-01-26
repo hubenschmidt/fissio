@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { chat } from '$lib/stores/chat';
 	import Header from '$lib/components/Header.svelte';
 	import ChatMessage from '$lib/components/ChatMessage.svelte';
 	import ChatInput from '$lib/components/ChatInput.svelte';
-	import PipelineEditor from '$lib/components/PipelineEditor.svelte';
 	import type { PipelineInfo } from '$lib/types';
 
-	const { messages, isConnected, isStreaming, isThinking, models, selectedModel, templates, pipelines, selectedPipeline, pipelineConfig, pipelineModified, modelStatus } = chat;
+	const { messages, isConnected, isStreaming, isThinking, models, selectedModel, pipelines, selectedPipeline, pipelineConfig, pipelineModified, modelStatus, composeMode, composeDraft } = chat;
 	const WS_URL = 'ws://localhost:8000/ws';
 
 	let inputText = '';
 	let messagesContainer: HTMLDivElement;
 	let prevModel = '';
-	let showEditor = false;
+	let prevPipeline = '';
 
 	onMount(() => {
 		chat.connect(WS_URL);
@@ -61,12 +61,32 @@
 
 	function handleSend() {
 		if (!inputText.trim() || $isStreaming) return;
+
+		const trimmed = inputText.trim().toLowerCase();
+
+		// Handle /compose command
+		if (trimmed === '/compose') {
+			chat.enterComposeMode();
+			inputText = '';
+			return;
+		}
+
+		// Handle /done command in compose mode
+		if (trimmed === '/done' && $composeMode === 'composing') {
+			chat.send('/done');
+			inputText = '';
+			return;
+		}
+
 		chat.send(inputText);
 		inputText = '';
 	}
 
-	$: if ($selectedPipeline === '__new__') {
+	$: if ($selectedPipeline === '__new__' && prevPipeline !== '__new__') {
 		createNewPipeline();
+		prevPipeline = '__new__';
+	} else if ($selectedPipeline !== '__new__') {
+		prevPipeline = $selectedPipeline;
 	}
 
 	function createNewPipeline() {
@@ -83,31 +103,44 @@
 				{ from: 'llm1', to: 'output' }
 			]
 		};
+		chat.selectedPipeline.set('');
 		chat.pipelineConfig.set(blank);
 		chat.pipelineModified.set(true);
-		showEditor = true;
+		goto('/composer');
 	}
 
 	function openEditor() {
-		showEditor = true;
-	}
-
-	function closeEditor() {
-		showEditor = false;
-	}
-
-	function handlePipelineUpdate(config: PipelineInfo) {
-		chat.pipelineConfig.set(config);
-		chat.pipelineModified.set(true);
-	}
-
-	async function handleSavePipeline(config: PipelineInfo) {
-		await chat.savePipeline(config);
-		showEditor = false;
+		goto('/composer');
 	}
 
 	function handleDeletePipeline(id: string) {
 		chat.deletePipeline(id);
+	}
+
+	async function handleSaveComposed() {
+		const draft = $composeDraft;
+		if (!draft) return;
+
+		const config: PipelineInfo = {
+			id: draft.id || `composed_${Date.now()}`,
+			name: draft.name || 'Composed Pipeline',
+			description: draft.description || '',
+			nodes: (draft.nodes || []).map((n) => ({
+				id: n.id,
+				node_type: n.node_type,
+				model: n.model ?? null,
+				prompt: n.prompt ?? null
+			})),
+			edges: draft.edges || []
+		};
+
+		await chat.savePipeline(config);
+		chat.selectedPipeline.set(config.id);
+		chat.exitComposeMode();
+	}
+
+	function handleCancelCompose() {
+		chat.exitComposeMode();
 	}
 </script>
 
@@ -145,6 +178,29 @@
 			{/if}
 		</div>
 
+		{#if $composeMode === 'composing'}
+			<div class="compose-indicator">
+				<span class="compose-badge">COMPOSE MODE</span>
+				<span class="compose-hint">Type <code>/done</code> when design is complete</span>
+			</div>
+		{/if}
+
+		{#if $composeMode === 'finalizing' && $composeDraft}
+			<div class="compose-preview">
+				<div class="compose-preview-header">
+					<h4>{$composeDraft.name || 'Unnamed Pipeline'}</h4>
+					<span class="compose-preview-meta">
+						{$composeDraft.nodes?.length || 0} nodes, {$composeDraft.edges?.length || 0} edges
+					</span>
+				</div>
+				<p class="compose-preview-desc">{$composeDraft.description || 'No description'}</p>
+				<div class="compose-preview-actions">
+					<button class="btn-save" onclick={handleSaveComposed}>Save & Use</button>
+					<button class="btn-cancel" onclick={handleCancelCompose}>Cancel</button>
+				</div>
+			</div>
+		{/if}
+
 		<ChatInput
 			bind:value={inputText}
 			disabled={!$isConnected || $selectedModel === 'none'}
@@ -154,21 +210,3 @@
 	</main>
 </div>
 
-{#if showEditor}
-	{#if $pipelineConfig}
-		<PipelineEditor
-			config={$pipelineConfig}
-			models={$models}
-			templates={$templates}
-			onUpdate={handlePipelineUpdate}
-			onSave={handleSavePipeline}
-		/>
-	{:else}
-		<div style="position:fixed;inset:0;z-index:1000;background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:white;">
-			<div>
-				<p>No pipeline config loaded</p>
-				<button onclick={closeEditor}>Close</button>
-			</div>
-		</div>
-	{/if}
-{/if}

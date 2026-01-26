@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import type { ChatMsg, ModelConfig, PipelineInfo, RuntimePipelineConfig, WsPayload, WsResponse, WsMetadata } from '$lib/types';
+import type { ChatMsg, HistoryMessage, ModelConfig, PipelineInfo, RuntimePipelineConfig, WsPayload, WsResponse, WsMetadata } from '$lib/types';
 import { devMode } from './settings';
 
 function createChatStore() {
@@ -20,6 +20,52 @@ function createChatStore() {
 	// Mutable pipeline config (cloned from selected config, user can modify)
 	const pipelineConfig = writable<PipelineInfo | null>(null);
 	const pipelineModified = writable(false);
+
+	// Compose mode state
+	const composeMode = writable<'idle' | 'composing' | 'finalizing'>('idle');
+	const composeDraft = writable<Partial<PipelineInfo> | null>(null);
+
+	const COMPOSE_SYSTEM_PROMPT = `You are a pipeline design assistant helping users create agentic workflow patterns.
+
+Available node types:
+- llm: Language model node for text generation
+- worker: Task execution node
+- coordinator: Distributes work to multiple nodes
+- aggregator: Combines outputs from multiple nodes
+- orchestrator: Dynamic task decomposition and worker dispatch
+- synthesizer: Synthesizes multiple inputs into coherent output
+- router: Routes input to one of several paths based on classification
+- gate: Checkpoint that validates before proceeding
+- evaluator: Evaluates output quality, can trigger feedback loops
+
+Available edge types:
+- direct: Standard flow from one node to next
+- conditional: Router decides which path (one of many)
+- dynamic: Orchestrator decides which workers (subset of many)
+- feedback: Loop back for iterative refinement (e.g., evaluator → generator)
+
+Guide the user by:
+1. Understanding their use case and requirements
+2. Suggesting appropriate patterns (routing for classification, aggregator for multi-source, evaluator-optimizer for quality)
+3. Building the pipeline incrementally through conversation
+4. Explaining your design choices
+
+When the user says "/done" or indicates they're satisfied, output the final configuration as a fenced JSON block:
+\`\`\`json
+{
+  "name": "Descriptive Pipeline Name",
+  "description": "What this pipeline does",
+  "nodes": [
+    { "id": "node_id", "node_type": "llm|worker|router|etc", "prompt": "System prompt for this node" }
+  ],
+  "edges": [
+    { "from": "input", "to": "first_node" },
+    { "from": "node_id", "to": "output", "edge_type": "direct|conditional|dynamic|feedback" }
+  ]
+}
+\`\`\`
+
+Always include edges from "input" to the first node(s) and from final node(s) to "output".`;
 
 	let ws: WebSocket | null = null;
 	const uuid = crypto.randomUUID();
@@ -80,9 +126,7 @@ function createChatStore() {
 					console.log(`    layout:`, c.layout);
 				});
 				pipelines.set(data.configs);
-				if (data.configs.length > 0 && !get(selectedPipeline)) {
-					selectedPipeline.set(data.configs[0].id);
-				}
+				// Keep default empty to show "Select agent" placeholder
 			}
 
 			if (data.models || data.templates || data.configs) {
@@ -127,11 +171,31 @@ function createChatStore() {
 		isThinking.set(false);
 		messages.update((msgs) => {
 			const last = msgs[msgs.length - 1];
-			if (last?.streaming) {
-				return [...msgs.slice(0, -1), { ...last, streaming: false, metadata }];
-			}
-			return msgs;
+			if (!last?.streaming) return msgs;
+			return [...msgs.slice(0, -1), { ...last, streaming: false, metadata }];
 		});
+
+		// In compose mode, check for JSON config in the response
+		if (get(composeMode) !== 'composing') return;
+
+		const msgs = get(messages);
+		const lastMsg = msgs[msgs.length - 1];
+		if (!lastMsg || lastMsg.user !== 'Bot') return;
+
+		const jsonMatch = lastMsg.msg.match(/```json\n([\s\S]*?)\n```/);
+		if (!jsonMatch) return;
+
+		try {
+			const parsed = JSON.parse(jsonMatch[1]) as Partial<PipelineInfo>;
+			// Generate ID if not provided
+			if (!parsed.id) {
+				parsed.id = `composed_${Date.now()}`;
+			}
+			composeDraft.set(parsed);
+			composeMode.set('finalizing');
+		} catch (e) {
+			console.error('[compose] Failed to parse JSON:', e);
+		}
 	}
 
 	function toRuntimeConfig(config: PipelineInfo): RuntimePipelineConfig {
@@ -150,6 +214,16 @@ function createChatStore() {
 		};
 	}
 
+	function buildHistory(): HistoryMessage[] {
+		const msgs = get(messages);
+		return msgs
+			.filter((m) => m.user === 'User' || m.user === 'Bot')
+			.map((m) => ({
+				role: m.user === 'User' ? 'user' : 'assistant',
+				content: m.msg
+			})) as HistoryMessage[];
+	}
+
 	function send(text: string) {
 		if (!ws || !text.trim()) return;
 
@@ -157,6 +231,7 @@ function createChatStore() {
 		isThinking.set(true);
 
 		const config = get(pipelineConfig);
+		const mode = get(composeMode);
 
 		const payload: WsPayload = {
 			uuid,
@@ -165,8 +240,14 @@ function createChatStore() {
 			verbose: get(devMode)
 		};
 
-		// Always send full config for user-saved pipelines
-		if (config) {
+		// In compose mode, send history and custom system prompt
+		if (mode === 'composing') {
+			payload.system_prompt = COMPOSE_SYSTEM_PROMPT;
+			payload.history = buildHistory();
+		}
+
+		// Always send full config for user-saved pipelines (unless in compose mode)
+		if (config && mode !== 'composing') {
 			payload.pipeline_config = toRuntimeConfig(config);
 		}
 
@@ -273,8 +354,7 @@ function createChatStore() {
 		if (!res.ok) return;
 		pipelines.update((list) => list.filter((p) => p.id !== id));
 		if (get(selectedPipeline) === id) {
-			const remaining = get(pipelines);
-			selectedPipeline.set(remaining.length > 0 ? remaining[0].id : '');
+			selectedPipeline.set('');
 		}
 	}
 
@@ -302,6 +382,34 @@ function createChatStore() {
 		return model?.api_base !== null && model?.api_base !== undefined;
 	}
 
+	function enterComposeMode() {
+		composeMode.set('composing');
+		composeDraft.set(null);
+		messages.update((msgs) => [
+			...msgs,
+			{
+				user: 'Bot',
+				msg: `**Compose Mode Activated** 🎨
+
+I'll help you design an agentic workflow pattern. Describe your use case and I'll suggest appropriate node types and connections.
+
+**Example use cases:**
+- "I need to route customer questions to different specialists"
+- "I want to generate content and then have it reviewed for quality"
+- "I need to break down complex tasks and assign them to workers"
+
+When you're satisfied with the design, type \`/done\` and I'll output the final configuration.
+
+What would you like to build?`
+			}
+		]);
+	}
+
+	function exitComposeMode() {
+		composeMode.set('idle');
+		composeDraft.set(null);
+	}
+
 	function reset() {
 		messages.set([{ user: 'Bot', msg: 'Welcome! How can I help you today?' }]);
 	}
@@ -325,6 +433,8 @@ function createChatStore() {
 		modelStatus,
 		pipelineConfig,
 		pipelineModified,
+		composeMode,
+		composeDraft,
 		connect,
 		send,
 		wake,
@@ -338,7 +448,9 @@ function createChatStore() {
 		updateEdges,
 		resetPipeline,
 		savePipeline,
-		deletePipeline
+		deletePipeline,
+		enterComposeMode,
+		exitComposeMode
 	};
 }
 

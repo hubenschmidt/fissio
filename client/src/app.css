@@ -202,3 +202,98 @@ main {
     transform: scale(1);
   }
 }
+
+/* Compose mode styles */
+.compose-indicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: linear-gradient(90deg, rgba(79, 70, 229, 0.15), rgba(99, 102, 241, 0.1));
+  border-top: 1px solid var(--accent);
+}
+
+.compose-badge {
+  background: var(--accent);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+
+.compose-hint {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.compose-hint code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  color: var(--accent-hover);
+}
+
+.compose-preview {
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border-top: 2px solid var(--success);
+}
+
+.compose-preview-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.compose-preview-header h4 {
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.compose-preview-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.compose-preview-desc {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.compose-preview-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.compose-preview-actions button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-save {
+  background: var(--success);
+  color: white;
+}
+
+.btn-save:hover {
+  background: #16a34a;
+}
+
+.btn-cancel {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.btn-cancel:hover {
+  background: #4b5563;
+}

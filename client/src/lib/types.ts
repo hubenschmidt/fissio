@@ -64,6 +64,11 @@ export type ChatMsg = {
 	metadata?: WsMetadata;
 };
 
+export type HistoryMessage = {
+	role: 'user' | 'assistant';
+	content: string;
+};
+
 export type WsPayload = {
 	uuid?: string;
 	message?: string;
@@ -75,6 +80,8 @@ export type WsPayload = {
 	verbose?: boolean;
 	wake_model_id?: string;
 	unload_model_id?: string;
+	history?: HistoryMessage[];
+	system_prompt?: string;
 };
 
 export type WsResponse = {
