@@ -20,7 +20,7 @@
 	export let onSave: (config: PipelineInfo) => void = () => {};
 
 	const nodeTypes = ['llm', 'worker', 'coordinator', 'aggregator', 'orchestrator', 'synthesizer', 'router', 'gate', 'evaluator'];
-	const edgeTypes = ['direct', 'conditional', 'dynamic'];
+	const edgeTypes = ['direct', 'conditional', 'dynamic', 'feedback'];
 
 	const nodeColors: Record<string, string> = {
 		llm: '#8b5cf6',
@@ -41,6 +41,7 @@
 
 	let selectedNodeId: string | null = null;
 	let selectedEdgeIndex: number | null = null;
+	let selectedTemplate = '';
 	let newEdgeFrom = '';
 	let newEdgeTo = '';
 	let newEdgeType = 'direct';
@@ -283,7 +284,14 @@
 	function edgeDash(type: string): string {
 		if (type === 'conditional') return '8,4';
 		if (type === 'dynamic') return '2,4';
+		if (type === 'feedback') return '6,3,2,3';
 		return '';
+	}
+
+	function edgeColor(type: string, selected: boolean): string {
+		if (selected) return '#3b82f6';
+		if (type === 'feedback') return '#ef4444';
+		return '#888';
 	}
 
 	function applyTemplate(templateId: string) {
@@ -427,7 +435,7 @@
 	<div class="editor-header">
 		<input class="pipeline-name-input" type="text" value={config.name} on:input={(e) => onUpdate({ ...config, name: e.currentTarget.value })} placeholder="Pipeline name..." />
 		<div class="header-actions">
-			<select class="template-select" on:change={(e) => { applyTemplate(e.currentTarget.value); e.currentTarget.value = ''; }}>
+			<select class="template-select" bind:value={selectedTemplate} on:change={() => applyTemplate(selectedTemplate)}>
 				<option value="">Apply template...</option>
 				{#each templates as tpl}
 					<option value={tpl.id}>{tpl.name}</option>
@@ -454,16 +462,19 @@
 					<marker id="arrowhead-sel" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
 						<polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
 					</marker>
+					<marker id="arrowhead-feedback" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+						<polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+					</marker>
 				</defs>
 
 				{#each layout.edges as edge}
 					<path
 						d={pathD(edge.points)}
 						fill="none"
-						stroke={selectedEdgeIndex === edge.index ? '#3b82f6' : '#888'}
+						stroke={edgeColor(edge.edgeType, selectedEdgeIndex === edge.index)}
 						stroke-width={selectedEdgeIndex === edge.index ? 2.5 : 2}
 						stroke-dasharray={edgeDash(edge.edgeType)}
-						marker-end={selectedEdgeIndex === edge.index ? 'url(#arrowhead-sel)' : 'url(#arrowhead)'}
+						marker-end={selectedEdgeIndex === edge.index ? 'url(#arrowhead-sel)' : edge.edgeType === 'feedback' ? 'url(#arrowhead-feedback)' : 'url(#arrowhead)'}
 						class="edge"
 						on:click={() => selectEdge(edge.index)}
 						on:keydown={(e) => e.key === 'Enter' && selectEdge(edge.index)}
