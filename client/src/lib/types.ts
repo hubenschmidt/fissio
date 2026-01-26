@@ -20,6 +20,8 @@ export type NodeInfo = {
 	node_type: string;
 	model: string | null;
 	prompt: string | null;
+	x?: number;
+	y?: number;
 };
 
 export type EdgeInfo = {
@@ -34,6 +36,7 @@ export type PipelineInfo = {
 	description: string;
 	nodes: NodeInfo[];
 	edges: EdgeInfo[];
+	layout?: Record<string, { x: number; y: number }>; // positions for input/output virtual nodes
 };
 
 export type RuntimeNodeConfig = {

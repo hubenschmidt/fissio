@@ -178,6 +178,8 @@ async fn init_server_state() -> ServerState {
                 node_type: format!("{:?}", n.node_type).to_lowercase(),
                 model: n.model.clone(),
                 prompt: n.prompt.clone(),
+                x: None,
+                y: None,
             }).collect(),
             edges: p.edges.iter().map(|e| EdgeInfo {
                 from: endpoint_to_json(&e.from),
@@ -188,6 +190,7 @@ async fn init_server_state() -> ServerState {
                     Some(format!("{:?}", e.edge_type).to_lowercase())
                 },
             }).collect(),
+            layout: None,
         })
         .collect();
 

@@ -46,6 +46,26 @@
 	// Sidebar state
 	let sidebarOpen = true;
 
+	// Load positions from config on init
+	$: {
+		const positions: Record<string, { x: number; y: number }> = {};
+		// Load from nodes
+		config.nodes.forEach(n => {
+			if (n.x !== undefined && n.y !== undefined) {
+				positions[n.id] = { x: n.x, y: n.y };
+			}
+		});
+		// Load from layout (for input/output)
+		if (config.layout) {
+			Object.entries(config.layout).forEach(([id, pos]) => {
+				positions[id] = pos;
+			});
+		}
+		if (Object.keys(positions).length > 0) {
+			nodePositionOverrides = positions;
+		}
+	}
+
 	$: selectedNode = selectedNodeId ? config.nodes.find(n => n.id === selectedNodeId) : null;
 	$: selectedEdge = selectedEdgeIndex !== null ? config.edges[selectedEdgeIndex] : null;
 
@@ -304,6 +324,31 @@
 		onUpdate({ ...config, edges });
 	}
 
+	function saveWithPositions() {
+		// Merge positions into nodes
+		const nodesWithPositions = config.nodes.map(n => {
+			const pos = nodePositionOverrides[n.id];
+			return pos ? { ...n, x: pos.x, y: pos.y } : n;
+		});
+
+		// Collect input/output positions into layout
+		const layoutPositions: Record<string, { x: number; y: number }> = {};
+		if (nodePositionOverrides['input']) {
+			layoutPositions['input'] = nodePositionOverrides['input'];
+		}
+		if (nodePositionOverrides['output']) {
+			layoutPositions['output'] = nodePositionOverrides['output'];
+		}
+
+		const configWithPositions = {
+			...config,
+			nodes: nodesWithPositions,
+			layout: Object.keys(layoutPositions).length > 0 ? layoutPositions : undefined
+		};
+
+		onSave(configWithPositions);
+	}
+
 	// Drag handlers
 	let svgElement: SVGSVGElement;
 
@@ -364,7 +409,7 @@
 				{/each}
 			</select>
 			<button class="add-btn" on:click={addNode}>+ Add Node</button>
-			<button class="save-btn" on:click={() => onSave(config)}>Save</button>
+			<button class="save-btn" on:click={saveWithPositions}>Save</button>
 		</div>
 	</div>
 

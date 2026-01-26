@@ -224,7 +224,8 @@ function createChatStore() {
 			name: config.name,
 			description: config.description,
 			nodes: config.nodes,
-			edges: config.edges
+			edges: config.edges,
+			layout: config.layout
 		};
 		console.log('[save] Sending save request:', config.id, config.name);
 		try {

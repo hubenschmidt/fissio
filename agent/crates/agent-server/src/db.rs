@@ -9,7 +9,8 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use tracing::{error, info};
 
-use crate::dto::{EdgeInfo, NodeInfo, PipelineInfo, SavePipelineRequest};
+use std::collections::HashMap;
+use crate::dto::{EdgeInfo, NodeInfo, PipelineInfo, Position, SavePipelineRequest};
 
 /// Initializes the database, creating tables if needed.
 pub fn init_db(path: &str) -> Result<Connection> {
@@ -64,6 +65,7 @@ pub fn list_user_pipelines(conn: &Connection) -> Vec<PipelineInfo> {
             description,
             nodes: config.nodes,
             edges: config.edges,
+            layout: config.layout,
         })
     }).collect()
 }
@@ -73,6 +75,7 @@ pub fn save_pipeline(conn: &Connection, req: &SavePipelineRequest) -> Result<()>
     let config = StoredConfig {
         nodes: req.nodes.clone(),
         edges: req.edges.clone(),
+        layout: req.layout.clone(),
     };
     let config_json = serde_json::to_string(&config).context("failed to serialize config")?;
     conn.execute(
@@ -96,6 +99,8 @@ pub fn delete_pipeline(conn: &Connection, id: &str) -> Result<()> {
 struct StoredConfig {
     nodes: Vec<NodeInfo>,
     edges: Vec<EdgeInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    layout: Option<HashMap<String, Position>>,
 }
 
 /// Seed example configs if the database is empty
@@ -212,6 +217,8 @@ pub fn seed_examples(conn: &Connection) -> Result<()> {
                 node_type: node_type.to_string(),
                 model: None,
                 prompt: if prompt.is_empty() { None } else { Some(prompt.to_string()) },
+                x: None,
+                y: None,
             }
         }).collect();
 
@@ -229,7 +236,7 @@ pub fn seed_examples(conn: &Connection) -> Result<()> {
             EdgeInfo { from: from_val, to: to_val, edge_type: edge_type.map(|s| s.to_string()) }
         }).collect();
 
-        let config = StoredConfig { nodes, edges };
+        let config = StoredConfig { nodes, edges, layout: None };
         let config_json = serde_json::to_string(&config)?;
 
         conn.execute(

@@ -93,6 +93,10 @@ pub struct NodeInfo {
     pub node_type: String,
     pub model: Option<String>,
     pub prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub y: Option<f64>,
 }
 
 /// Edge information for API responses.
@@ -104,14 +108,23 @@ pub struct EdgeInfo {
     pub edge_type: Option<String>,
 }
 
+/// Position for layout storage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+}
+
 /// Complete pipeline information for API responses.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineInfo {
     pub id: String,
     pub name: String,
     pub description: String,
     pub nodes: Vec<NodeInfo>,
     pub edges: Vec<EdgeInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layout: Option<HashMap<String, Position>>,
 }
 
 // === Pipeline CRUD Types ===
@@ -125,6 +138,8 @@ pub struct SavePipelineRequest {
     pub description: String,
     pub nodes: Vec<NodeInfo>,
     pub edges: Vec<EdgeInfo>,
+    #[serde(default)]
+    pub layout: Option<HashMap<String, Position>>,
 }
 
 /// Response from saving a pipeline.

@@ -38,6 +38,7 @@ pub async fn save(
         description: req.description,
         nodes: req.nodes,
         edges: req.edges,
+        layout: req.layout,
     };
 
     let mut configs = state.configs.write().await;
