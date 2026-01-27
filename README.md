@@ -30,7 +30,7 @@ The app includes templates for common agentic patterns:
 
 ```
 ┌─────────────────┐                    ┌─────────────────────────────────────┐
-│  Svelte 5 UI    │◄──── WebSocket ────│              Agent                  │
+│  Solid.js UI    │◄──── WebSocket ────│              Agent                  │
 │                 │                    │                                     │
 │  Header         │                    │  Model Discovery                    │
 │  ├─ Config      │                    │  ├── OpenAI (cloud)                 │
@@ -50,7 +50,7 @@ The app includes templates for common agentic patterns:
 
 ## Technologies
 
-- **Client:** Svelte 5, SvelteKit, TypeScript
+- **Client:** Solid.js, TypeScript
 - **Agent:** Rust, Axum, Tokio, SQLite (rusqlite)
 - **LLM:** OpenAI API, Ollama (local models)
 
@@ -129,23 +129,3 @@ ollama serve
 ```
 
 Models appear in the dropdown automatically.
-
-## Project Structure
-
-```
-.
-├── agent/                    # Rust backend
-│   ├── crates/
-│   │   ├── agent-core/       # Shared types, ModelConfig
-│   │   ├── agent-config/     # Pipeline presets, node types
-│   │   ├── agent-network/    # Ollama discovery
-│   │   ├── agent-tools/      # Tool registry (fetch_url, web_search)
-│   │   └── agent-server/     # Axum server, WebSocket, SQLite
-│   └── data/                 # SQLite database (auto-created)
-├── client/                   # SvelteKit frontend
-│   └── src/
-│       ├── lib/components/   # Header, PipelineEditor, Chat
-│       ├── lib/stores/       # chat.ts, settings.ts
-│       └── routes/           # +page.svelte
-└── docker-compose.yml
-```
