@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use agent_config::{EdgeConfig, EdgeEndpoint, EdgeType, NodeConfig, NodeType, PipelineConfig};
 use agent_core::{AgentError, ModelConfig};
-use agent_network::{ChatResponse, LlmStream, ToolSchema, UnifiedLlmClient};
+use agent_network::{ChatResponse, LlmStream, ToolCall, ToolSchema, UnifiedLlmClient};
 use agent_tools::ToolRegistry;
 use async_recursion::async_recursion;
 use futures::future::join_all;
@@ -118,6 +118,15 @@ impl PipelineEngine {
         }).collect()
     }
 
+    /// Gets all target node IDs from outgoing edges (for router decisions).
+    fn get_outgoing_targets(&self, node_id: &str) -> Vec<String> {
+        self.get_outgoing_edges(node_id)
+            .iter()
+            .flat_map(|e| e.to.as_vec().into_iter().map(String::from))
+            .filter(|t| t != "output")
+            .collect()
+    }
+
     /// Executes the pipeline and returns the result.
     pub async fn execute_stream(
         &self,
@@ -213,13 +222,14 @@ impl PipelineEngine {
             let Some(node) = self.get_node(id) else { continue };
             let input = self.get_input_for_node(id, context).await;
             let model = self.get_node_model(node).clone();
-            node_data.push((node.id.clone(), node.node_type, model, node.prompt.clone(), node.tools.clone(), input));
+            let outgoing_targets = self.get_outgoing_targets(id);
+            node_data.push((node.id.clone(), node.node_type, model, node.prompt.clone(), node.tools.clone(), input, outgoing_targets));
         }
 
         // Execute in parallel
         let tool_registry = Arc::clone(&self.tool_registry);
         let futures: Vec<_> = node_data.into_iter()
-            .map(|(node_id, node_type, model, prompt, tools, input)| {
+            .map(|(node_id, node_type, model, prompt, tools, input, outgoing_targets)| {
                 let step = Arc::clone(step);
                 let registry = Arc::clone(&tool_registry);
                 async move {
@@ -228,7 +238,7 @@ impl PipelineEngine {
                         *s += 1;
                         *s
                     };
-                    let result = execute_node(&node_id, node_type, &model, prompt.as_deref(), &input, &tools, &registry, current_step).await;
+                    let result = execute_node(&node_id, node_type, &model, prompt.as_deref(), &input, &tools, &registry, current_step, &outgoing_targets).await;
                     (node_id, result)
                 }
             })
@@ -236,10 +246,14 @@ impl PipelineEngine {
 
         let results = join_all(futures).await;
 
-        // Store results
+        // Store results and track router decisions
+        let mut router_decisions: HashMap<String, Vec<String>> = HashMap::new();
         for (node_id, result) in results {
             let output = result?;
             context.write().await.insert(node_id.clone(), output.content);
+            if !output.next_nodes.is_empty() {
+                router_decisions.insert(node_id.clone(), output.next_nodes);
+            }
             executed.insert(node_id);
         }
 
@@ -248,11 +262,20 @@ impl PipelineEngine {
 
         // Process outgoing edges
         for node_id in target_ids {
+            let next_nodes = router_decisions.get(node_id);
             for next_edge in self.get_outgoing_edges(node_id) {
                 let next_targets = next_edge.to.as_vec();
-                if !next_targets.iter().any(|t| executed.contains(*t)) {
-                    self.process_edge(next_edge, context, executed, history, step).await?;
+                if next_targets.iter().any(|t| executed.contains(*t)) {
+                    continue;
                 }
+                // If router returned specific targets, only follow matching edges
+                if let Some(routed) = next_nodes {
+                    let should_follow = next_targets.iter().any(|t| routed.contains(&t.to_string()));
+                    if !should_follow {
+                        continue;
+                    }
+                }
+                self.process_edge(next_edge, context, executed, history, step).await?;
             }
         }
 
@@ -275,6 +298,7 @@ impl PipelineEngine {
 
             let Some(node) = self.get_node(node_id) else { continue };
             let input = self.get_input_for_node(node_id, context).await;
+            let outgoing_targets = self.get_outgoing_targets(node_id);
 
             let current_step = {
                 let mut s = step.write().await;
@@ -283,12 +307,21 @@ impl PipelineEngine {
             };
 
             let model = self.get_node_model(node);
-            let output = execute_node(node_id, node.node_type, model, node.prompt.as_deref(), &input, &node.tools, &self.tool_registry, current_step).await?;
+            let output = execute_node(node_id, node.node_type, model, node.prompt.as_deref(), &input, &node.tools, &self.tool_registry, current_step, &outgoing_targets).await?;
 
-            context.write().await.insert(node_id.to_string(), output.content);
+            context.write().await.insert(node_id.to_string(), output.content.clone());
             executed.insert(node_id.to_string());
 
+            // Process outgoing edges - filter by router decision if applicable
             for next_edge in self.get_outgoing_edges(node_id) {
+                // If router returned specific targets, only follow matching edges
+                if !output.next_nodes.is_empty() {
+                    let edge_targets = next_edge.to.as_vec();
+                    let should_follow = edge_targets.iter().any(|t| output.next_nodes.contains(&t.to_string()));
+                    if !should_follow {
+                        continue;
+                    }
+                }
                 self.process_edge(next_edge, context, executed, history, step).await?;
             }
         }
@@ -324,6 +357,7 @@ const MAX_TOOL_ITERATIONS: usize = 10;
 
 /// Executes a single node and returns its output.
 /// If the node has tools configured, runs an agentic loop until the LLM produces final output.
+/// For Router nodes, executes an LLM call to determine routing and returns the target in next_nodes.
 async fn execute_node(
     node_id: &str,
     node_type: NodeType,
@@ -333,6 +367,7 @@ async fn execute_node(
     tools: &[String],
     tool_registry: &ToolRegistry,
     step: usize,
+    outgoing_targets: &[String],
 ) -> Result<NodeOutput, AgentError> {
     info!("╠──────────────────────────────────────────────────────────────");
     info!("║ [{}] NODE: {} ({:?})", step, node_id, node_type);
@@ -345,6 +380,13 @@ async fn execute_node(
     let start = std::time::Instant::now();
     info!("║     → {}", node_type.action_label());
 
+    // Router node: execute LLM to classify and determine routing target
+    if node_type.is_router() {
+        let (content, next_nodes) = execute_router(model, prompt, input, outgoing_targets).await?;
+        info!("║     ✓ Completed in {:?}, routed to: {:?}", start.elapsed(), next_nodes);
+        return Ok(NodeOutput { content, next_nodes });
+    }
+
     let content = if node_type.requires_llm() {
         execute_node_with_tools(model, prompt, input, tools, tool_registry).await?
     } else {
@@ -354,6 +396,51 @@ async fn execute_node(
     info!("║     ✓ Completed in {:?}", start.elapsed());
 
     Ok(NodeOutput { content, next_nodes: vec![] })
+}
+
+/// Executes a Router node: LLM classifies input and returns the target node(s).
+async fn execute_router(
+    model: &ModelConfig,
+    prompt: Option<&str>,
+    input: &str,
+    outgoing_targets: &[String],
+) -> Result<(String, Vec<String>), AgentError> {
+    let client = UnifiedLlmClient::new(&model.model, model.api_base.as_deref());
+
+    // Build routing prompt
+    let targets_list = outgoing_targets.join(", ");
+    let routing_prompt = format!(
+        "{}\n\nYou are a routing classifier. Based on the input, determine which target to route to.\n\
+        Available targets: [{}]\n\n\
+        IMPORTANT: Respond with ONLY the target name, nothing else. No explanation, no punctuation.",
+        prompt.unwrap_or("Classify the following input and route to the appropriate target."),
+        targets_list
+    );
+
+    let response = client.chat(&routing_prompt, input).await?;
+    let decision = response.content.trim().to_lowercase();
+
+    info!("║     Router decision: '{}'", decision);
+
+    // Match decision to available targets (case-insensitive, partial match)
+    let matched: Vec<String> = outgoing_targets
+        .iter()
+        .filter(|t| {
+            let t_lower = t.to_lowercase();
+            decision.contains(&t_lower) || t_lower.contains(&decision)
+        })
+        .cloned()
+        .collect();
+
+    // Fall back to first target if no match
+    let next_nodes = if matched.is_empty() {
+        warn!("║     ⚠ No matching target for '{}', defaulting to first: {:?}", decision, outgoing_targets.first());
+        outgoing_targets.first().map(|t| vec![t.clone()]).unwrap_or_default()
+    } else {
+        matched
+    };
+
+    Ok((response.content, next_nodes))
 }
 
 /// Executes an LLM node, potentially with an agentic tool loop.
@@ -396,6 +483,7 @@ async fn execute_node_with_tools(
 
     // Agentic loop
     let mut messages = vec![UnifiedLlmClient::user_message(input)?];
+    let mut pending_tool_calls: Option<Vec<ToolCall>> = None;
     let mut iterations = 0;
 
     loop {
@@ -409,21 +497,28 @@ async fn execute_node_with_tools(
         }
 
         let response = client
-            .chat_with_tools(system_prompt, messages.clone(), &tool_schemas)
+            .chat_with_tools(
+                system_prompt,
+                messages.clone(),
+                &tool_schemas,
+                pending_tool_calls.as_deref(),
+            )
             .await?;
 
         match response {
             ChatResponse::Content(llm_response) => {
-                info!("║     ← Final response: {} chars (after {} iterations)",
-                    llm_response.content.len(), iterations);
+                info!(
+                    "║     ← Final response: {} chars (after {} iterations)",
+                    llm_response.content.len(),
+                    iterations
+                );
                 return Ok(llm_response.content);
             }
             ChatResponse::ToolCalls { calls, metrics: _ } => {
-                info!("║     ← Tool calls: {:?}", calls.iter().map(|c| &c.name).collect::<Vec<_>>());
-
-                // Add assistant message with tool calls (for context)
-                // Note: In a real implementation, we'd need to serialize the tool calls
-                // For now, we just proceed with executing tools
+                info!(
+                    "║     ← Tool calls: {:?}",
+                    calls.iter().map(|c| &c.name).collect::<Vec<_>>()
+                );
 
                 for call in &calls {
                     let tool = tool_registry.get(&call.name).ok_or_else(|| {
@@ -440,6 +535,9 @@ async fn execute_node_with_tools(
                     // Add tool result to messages
                     messages.push(UnifiedLlmClient::tool_result_message(&call.id, &result)?);
                 }
+
+                // Store tool calls for next iteration (needed for Anthropic message format)
+                pending_tool_calls = Some(calls);
             }
         }
     }

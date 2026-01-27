@@ -63,6 +63,11 @@ impl NodeType {
         matches!(self, NodeType::Llm | NodeType::Worker)
     }
 
+    /// Returns true if this node type performs routing decisions.
+    pub fn is_router(&self) -> bool {
+        matches!(self, NodeType::Router)
+    }
+
     /// Returns a human-readable label for logging.
     pub fn action_label(&self) -> &'static str {
         match self {

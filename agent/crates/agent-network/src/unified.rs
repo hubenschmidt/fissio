@@ -3,8 +3,8 @@
 use agent_core::{AgentError, Message};
 use async_openai::types::ChatCompletionRequestMessage;
 
-use crate::anthropic::AnthropicClient;
-use crate::client::{ChatResponse, LlmClient, ToolSchema};
+use crate::anthropic::{AnthropicClient, AnthropicToolMessage};
+use crate::client::{ChatResponse, LlmClient, ToolCall, ToolSchema};
 use crate::{LlmResponse, LlmStream};
 
 /// Provider type determined from model name.
@@ -74,13 +74,17 @@ impl UnifiedLlmClient {
         }
     }
 
-    /// Sends a chat request with tools (OpenAI only for now).
+    /// Sends a chat request with tools.
     /// Returns either content or tool calls that need to be executed.
+    ///
+    /// For multi-turn tool conversations, pass `pending_tool_calls` with the
+    /// tool calls from the previous response that are being fulfilled.
     pub async fn chat_with_tools(
         &self,
         system_prompt: &str,
         messages: Vec<ChatCompletionRequestMessage>,
         tools: &[ToolSchema],
+        pending_tool_calls: Option<&[ToolCall]>,
     ) -> Result<ChatResponse, AgentError> {
         match self.provider {
             ProviderType::OpenAI => {
@@ -88,12 +92,80 @@ impl UnifiedLlmClient {
                 client.chat_with_tools(system_prompt, messages, tools).await
             }
             ProviderType::Anthropic => {
-                // TODO: Implement Anthropic tool calling
-                Err(AgentError::LlmError(
-                    "Tool calling not yet supported for Anthropic models".to_string(),
-                ))
+                let client = AnthropicClient::new(&self.model);
+                let anthropic_messages = self.convert_to_anthropic_messages(&messages, pending_tool_calls)?;
+                client.chat_with_tools(system_prompt, anthropic_messages, tools).await
             }
         }
+    }
+
+    /// Converts OpenAI-format messages to Anthropic format.
+    fn convert_to_anthropic_messages(
+        &self,
+        messages: &[ChatCompletionRequestMessage],
+        pending_tool_calls: Option<&[ToolCall]>,
+    ) -> Result<Vec<AnthropicToolMessage>, AgentError> {
+        let mut result = Vec::new();
+        let mut tool_results: Vec<(String, String)> = Vec::new();
+
+        for msg in messages {
+            match msg {
+                ChatCompletionRequestMessage::User(user_msg) => {
+                    // Flush any pending tool results first
+                    if !tool_results.is_empty() {
+                        // Add assistant message with tool_use blocks before tool results
+                        if let Some(calls) = pending_tool_calls {
+                            result.push(AnthropicToolMessage::assistant_tool_use(calls));
+                        }
+                        result.push(AnthropicToolMessage::tool_results(&tool_results));
+                        tool_results.clear();
+                    }
+
+                    // Extract text content
+                    let text = match &user_msg.content {
+                        async_openai::types::ChatCompletionRequestUserMessageContent::Text(t) => t.clone(),
+                        async_openai::types::ChatCompletionRequestUserMessageContent::Array(parts) => {
+                            parts.iter().filter_map(|p| {
+                                if let async_openai::types::ChatCompletionRequestUserMessageContentPart::Text(t) = p {
+                                    Some(t.text.clone())
+                                } else {
+                                    None
+                                }
+                            }).collect::<Vec<_>>().join("\n")
+                        }
+                    };
+                    result.push(AnthropicToolMessage::user(&text));
+                }
+                ChatCompletionRequestMessage::Tool(tool_msg) => {
+                    // Collect tool results to batch them
+                    let id = tool_msg.tool_call_id.clone();
+                    let content = match &tool_msg.content {
+                        async_openai::types::ChatCompletionRequestToolMessageContent::Text(t) => t.clone(),
+                        async_openai::types::ChatCompletionRequestToolMessageContent::Array(parts) => {
+                            parts.iter().filter_map(|p| {
+                                if let async_openai::types::ChatCompletionRequestToolMessageContentPart::Text(t) = p {
+                                    Some(t.text.clone())
+                                } else {
+                                    None
+                                }
+                            }).collect::<Vec<_>>().join("\n")
+                        }
+                    };
+                    tool_results.push((id, content));
+                }
+                _ => {} // Skip system and other message types
+            }
+        }
+
+        // Flush any remaining tool results
+        if !tool_results.is_empty() {
+            if let Some(calls) = pending_tool_calls {
+                result.push(AnthropicToolMessage::assistant_tool_use(calls));
+            }
+            result.push(AnthropicToolMessage::tool_results(&tool_results));
+        }
+
+        Ok(result)
     }
 
     /// Helper to create a user message for tool conversations.

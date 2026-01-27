@@ -1,10 +1,11 @@
-//! Anthropic Claude API client with streaming support.
+//! Anthropic Claude API client with streaming and tool support.
 
 use agent_core::{AgentError, Message, MessageRole};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, info};
 
+use crate::client::{ChatResponse, ToolCall, ToolSchema};
 use crate::{LlmMetrics, LlmResponse, LlmStream, StreamChunk};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -59,6 +60,74 @@ struct ContentBlock {
 struct NonStreamResponse {
     content: Vec<ContentBlock>,
     usage: Usage,
+}
+
+// === Tool calling support ===
+
+/// Tool definition for Anthropic API.
+#[derive(Serialize)]
+struct AnthropicTool {
+    name: String,
+    description: String,
+    input_schema: serde_json::Value,
+}
+
+/// Request body with tools.
+#[derive(Serialize)]
+struct AnthropicRequestWithTools {
+    model: String,
+    max_tokens: u32,
+    system: String,
+    messages: Vec<AnthropicMessageWithContent>,
+    tools: Vec<AnthropicTool>,
+}
+
+/// Message with content blocks (for tool conversations).
+#[derive(Serialize, Clone)]
+pub struct AnthropicMessageWithContent {
+    role: String,
+    content: Vec<MessageContentBlock>,
+}
+
+/// Content block in a message - can be text, tool_use, or tool_result.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "type")]
+enum MessageContentBlock {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        tool_use_id: String,
+        content: String,
+    },
+}
+
+/// Response that may contain tool_use blocks.
+#[derive(Deserialize)]
+struct ToolResponse {
+    content: Vec<ToolResponseBlock>,
+    usage: Usage,
+    stop_reason: Option<String>,
+}
+
+/// A content block in the response.
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum ToolResponseBlock {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
 }
 
 /// Client for Anthropic's Claude API.
@@ -265,4 +334,158 @@ impl AnthropicClient {
 
         Ok(Box::pin(mapped))
     }
+
+    /// Sends a chat request with tools and returns either content or tool calls.
+    pub async fn chat_with_tools(
+        &self,
+        system_prompt: &str,
+        messages: Vec<AnthropicMessageWithContent>,
+        tools: &[ToolSchema],
+    ) -> Result<ChatResponse, AgentError> {
+        let start = std::time::Instant::now();
+
+        let anthropic_tools: Vec<AnthropicTool> = tools
+            .iter()
+            .map(|t| AnthropicTool {
+                name: t.name.clone(),
+                description: t.description.clone(),
+                input_schema: t.parameters.clone(),
+            })
+            .collect();
+
+        let request = AnthropicRequestWithTools {
+            model: self.model.clone(),
+            max_tokens: 8192,
+            system: system_prompt.to_string(),
+            messages,
+            tools: anthropic_tools,
+        };
+
+        let response = self
+            .client
+            .post(ANTHROPIC_API_URL)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", ANTHROPIC_VERSION)
+            .header("content-type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| AgentError::LlmError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(AgentError::LlmError(format!(
+                "Anthropic API error {}: {}",
+                status, body
+            )));
+        }
+
+        let resp: ToolResponse = response
+            .json()
+            .await
+            .map_err(|e| AgentError::LlmError(e.to_string()))?;
+
+        let elapsed_ms = start.elapsed().as_millis() as u64;
+        let metrics = LlmMetrics {
+            input_tokens: resp.usage.input_tokens.unwrap_or(0),
+            output_tokens: resp.usage.output_tokens.unwrap_or(0),
+            elapsed_ms,
+        };
+
+        // Check if response contains tool_use blocks
+        let tool_calls: Vec<ToolCall> = resp
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                ToolResponseBlock::ToolUse { id, name, input } => Some(ToolCall {
+                    id: id.clone(),
+                    name: name.clone(),
+                    arguments: input.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
+
+        if !tool_calls.is_empty() {
+            info!(
+                "Anthropic: {}ms, tokens: {}/{}, tool_calls: {}",
+                elapsed_ms,
+                metrics.input_tokens,
+                metrics.output_tokens,
+                tool_calls.len()
+            );
+            return Ok(ChatResponse::ToolCalls {
+                calls: tool_calls,
+                metrics,
+            });
+        }
+
+        // No tool calls - extract text content
+        let content: String = resp
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                ToolResponseBlock::Text { text } => Some(text.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("");
+
+        info!(
+            "Anthropic: {}ms, tokens: {}/{}, content: {} chars",
+            elapsed_ms,
+            metrics.input_tokens,
+            metrics.output_tokens,
+            content.len()
+        );
+
+        Ok(ChatResponse::Content(LlmResponse { content, metrics }))
+    }
 }
+
+// === Public helper functions for tool conversations ===
+
+impl AnthropicMessageWithContent {
+    /// Creates a user message with text content.
+    pub fn user(text: &str) -> Self {
+        Self {
+            role: "user".to_string(),
+            content: vec![MessageContentBlock::Text {
+                text: text.to_string(),
+            }],
+        }
+    }
+
+    /// Creates an assistant message with tool_use blocks.
+    pub fn assistant_tool_use(tool_calls: &[ToolCall]) -> Self {
+        Self {
+            role: "assistant".to_string(),
+            content: tool_calls
+                .iter()
+                .map(|tc| MessageContentBlock::ToolUse {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    input: tc.arguments.clone(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Creates a user message with tool_result blocks.
+    pub fn tool_results(results: &[(String, String)]) -> Self {
+        Self {
+            role: "user".to_string(),
+            content: results
+                .iter()
+                .map(|(id, content)| MessageContentBlock::ToolResult {
+                    tool_use_id: id.clone(),
+                    content: content.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Re-export for use in unified client.
+pub use AnthropicMessageWithContent as AnthropicToolMessage;
