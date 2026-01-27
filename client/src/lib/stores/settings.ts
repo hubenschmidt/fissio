@@ -1,3 +1,3 @@
-import { writable } from 'svelte/store';
+import { createSignal } from 'solid-js';
 
-export const devMode = writable(false);
+export const [devMode, setDevMode] = createSignal(false);

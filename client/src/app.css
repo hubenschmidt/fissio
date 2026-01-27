@@ -297,3 +297,510 @@ main {
 .btn-cancel:hover {
   background: #4b5563;
 }
+
+/* Settings panel */
+.settings-container {
+  position: relative;
+  margin-left: 0.5rem;
+}
+
+.settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.settings-btn:hover {
+  opacity: 1;
+}
+
+.settings-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 200px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.settings-header {
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.setting-item input {
+  cursor: pointer;
+}
+
+.setting-desc {
+  margin: 0.25rem 0 0 1.5rem;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+/* Header selectors */
+.header-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.model-status {
+  margin-left: auto;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.selectors {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: 0.5rem;
+}
+
+.selectors.no-status {
+  margin-left: auto;
+}
+
+.pipeline-wrapper {
+  display: flex;
+  gap: 0;
+}
+
+.pipeline-select,
+.model-select {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.pipeline-select {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.pipeline-select:disabled,
+.model-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-btn {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0 4px 4px 0;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.edit-btn:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.edit-btn.modified {
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+
+.edit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+header .delete-btn {
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0;
+  background: var(--bg-secondary);
+  color: #ef4444;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+header .delete-btn:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* Pipeline Editor */
+.editor-container {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--bg-primary);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.pipeline-name-input {
+  font-size: 1.125rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: 0.25rem 0.5rem;
+}
+
+.pipeline-name-input:hover,
+.pipeline-name-input:focus {
+  border-color: var(--border);
+  outline: none;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.template-select,
+.add-btn,
+.save-btn {
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.add-btn:hover {
+  background: #3b82f6;
+}
+
+.save-btn:hover {
+  background: #22c55e;
+}
+
+.editor-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.graph-panel {
+  flex: 1;
+  overflow: auto;
+  background:
+    linear-gradient(90deg, var(--border) 1px, transparent 1px) 0 0 / 20px 20px,
+    linear-gradient(var(--border) 1px, transparent 1px) 0 0 / 20px 20px;
+  padding: 1rem;
+}
+
+.graph-svg {
+  display: block;
+  user-select: none;
+}
+
+.node {
+  cursor: grab;
+}
+
+.node:hover rect {
+  filter: brightness(1.15);
+}
+
+.node.selected rect {
+  filter: brightness(1.2);
+}
+
+.node.dragging {
+  cursor: grabbing;
+}
+
+.edge {
+  cursor: pointer;
+}
+
+.edge:hover {
+  stroke-width: 3;
+}
+
+.side-panel {
+  width: 340px;
+  border-left: 1px solid var(--border);
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.panel-header {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sidebar-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sidebar-tabs button {
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.sidebar-tabs button.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.done-btn {
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: #3b82f6;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.done-btn:hover {
+  background: #2563eb;
+}
+
+.open-panel-btn {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 1.25rem;
+}
+
+.open-panel-btn:hover {
+  background: #3b82f6;
+}
+
+.edge-controls {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.edge-controls h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.edge-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.edge-form select,
+.edge-form button {
+  padding: 0.3rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+}
+
+.edge-form button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.properties {
+  padding: 1rem;
+}
+
+.properties h4 {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.properties label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.properties label span {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.properties input,
+.properties select,
+.properties textarea {
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.properties input:disabled {
+  opacity: 0.6;
+}
+
+.properties textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.properties .delete-btn {
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #ef4444;
+  background: transparent;
+  color: #ef4444;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.properties .delete-btn:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* Tools panel */
+.tools-panel {
+  padding: 1rem;
+}
+
+.tools-panel h4 {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.tool-item {
+  padding: 0.75rem;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.tool-item strong {
+  color: var(--accent);
+}
+
+.tool-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0.25rem 0;
+}
+
+.tool-usage {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.no-tools-msg {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.tools-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tool-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  flex-direction: row;
+}
+
+.tool-checkbox input {
+  cursor: pointer;
+}
+
+.tool-name {
+  font-size: 0.85rem;
+}
+
+/* No config fallback */
+.no-config {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 1rem;
+  color: var(--text-secondary);
+}
+
+.no-config button {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.no-config button:hover {
+  background: var(--accent);
+}
