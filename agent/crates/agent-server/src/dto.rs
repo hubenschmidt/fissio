@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use agent_core::{Message, ModelConfig};
+use fissio_core::{Message, ModelConfig};
 use serde::{Deserialize, Serialize};
 
 // === HTTP Request/Response Types ===

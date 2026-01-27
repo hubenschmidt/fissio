@@ -3,8 +3,8 @@
 //! Handles pre-loading models into GPU memory for faster first responses,
 //! and unloading to free memory when switching models.
 
-use agent_core::ModelConfig;
-use agent_network::{unload_model, LlmClient};
+use fissio_core::ModelConfig;
+use fissio_llm::{unload_model, LlmClient};
 use futures::StreamExt;
 use tracing::info;
 

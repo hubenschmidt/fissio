@@ -1,12 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/agent-config",
-    "crates/agent-core",
-    "crates/agent-engine",
-    "crates/agent-network",
     "crates/agent-server",
-    "crates/agent-tools",
 ]
 
 [workspace.package]
@@ -24,22 +19,12 @@ axum = { version = "0.8", features = ["ws"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
-# HTTP client
-reqwest = { version = "0.12", features = ["json"] }
-
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# OpenAI
-async-openai = "0.27"
-
 # Error handling
-thiserror = "2.0"
 anyhow = "1.0"
-
-# Async traits
-async-trait = "0.1"
 
 # Logging
 tracing = "0.1"
@@ -53,10 +38,3 @@ uuid = { version = "1.11", features = ["v4", "serde"] }
 
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
-
-# Internal crates
-agent-config = { path = "crates/agent-config" }
-agent-core = { path = "crates/agent-core" }
-agent-engine = { path = "crates/agent-engine" }
-agent-network = { path = "crates/agent-network" }
-agent-tools = { path = "crates/agent-tools" }

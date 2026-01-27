@@ -6,7 +6,7 @@
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use agent_core::{AgentError, Message, MessageRole, ModelConfig};
+use fissio_core::{AgentError, Message, MessageRole, ModelConfig};
 use futures::Stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

@@ -1,0 +1,17 @@
+[package]
+name = "fissio-tools"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Tool registry and built-in tools for fissio"
+
+[dependencies]
+fissio-core = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+html2text = { workspace = true }

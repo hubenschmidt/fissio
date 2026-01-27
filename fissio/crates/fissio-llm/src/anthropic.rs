@@ -1,6 +1,6 @@
 //! Anthropic Claude API client with streaming and tool support.
 
-use agent_core::{AgentError, Message, MessageRole};
+use fissio_core::{AgentError, Message, MessageRole};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};

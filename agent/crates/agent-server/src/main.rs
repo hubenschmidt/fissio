@@ -16,10 +16,10 @@ use std::time::Duration;
 
 use tokio::sync::RwLock;
 
-use agent_config::{EdgeEndpoint, PresetRegistry};
-use agent_core::ModelConfig;
-use agent_network::discover_models;
-use agent_tools::ToolRegistry;
+use fissio_config::{EdgeEndpoint, PresetRegistry};
+use fissio_core::ModelConfig;
+use fissio_llm::discover_models;
+use fissio_tools::ToolRegistry;
 
 use crate::dto::{EdgeInfo, NodeInfo, PipelineInfo};
 use anyhow::Result;
@@ -214,7 +214,7 @@ async fn init_server_state() -> ServerState {
             edges: p.edges.iter().map(|e| EdgeInfo {
                 from: endpoint_to_json(&e.from),
                 to: endpoint_to_json(&e.to),
-                edge_type: if e.edge_type == agent_config::EdgeType::Direct {
+                edge_type: if e.edge_type == fissio_config::EdgeType::Direct {
                     None
                 } else {
                     Some(format!("{:?}", e.edge_type).to_lowercase())

@@ -10,6 +10,7 @@ services:
     volumes:
       - ./agent:/app
       - agent-target:/app/target
+      - ./fissio:/fissio
     command: cargo watch --poll -i data/ -x "run --bin agent-server"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

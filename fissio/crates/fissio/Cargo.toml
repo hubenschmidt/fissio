@@ -1,0 +1,25 @@
+[package]
+name = "fissio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Pipeline-first agent framework for LLM-powered systems"
+keywords = ["llm", "agent", "pipeline", "ai", "orchestration"]
+categories = ["asynchronous", "web-programming"]
+
+[dependencies]
+fissio-config = { workspace = true }
+fissio-core = { workspace = true }
+fissio-engine = { workspace = true }
+fissio-llm = { workspace = true }
+fissio-tools = { workspace = true }
+
+[features]
+default = ["openai", "anthropic", "tools-web"]
+openai = []
+anthropic = []
+tools-web = []
+
+[dev-dependencies]
+tokio = { workspace = true }

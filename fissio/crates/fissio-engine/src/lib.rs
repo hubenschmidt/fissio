@@ -1,43 +1,104 @@
-//! Pipeline execution engine with parallel and sequential node traversal.
+//! Pipeline execution engine for fissio.
 //!
-//! Executes agent pipelines as directed graphs, handling different edge types
-//! (direct, parallel, conditional) and node types (LLM, gate, router, etc.).
-//! Supports tool calling with agentic loops for nodes that have tools configured.
+//! This crate provides the core DAG execution engine for fissio pipelines:
+//!
+//! - [`PipelineEngine`] — Executes pipeline configurations
+//! - [`ModelResolver`] — Resolves model IDs to configurations
+//! - [`EngineOutput`] — Stream or complete response from execution
+//! - [`NodeInput`] / [`NodeOutput`] — Data flowing through nodes
+//!
+//! # Quick Start
+//!
+//! ```rust,ignore
+//! use fissio_engine::PipelineEngine;
+//! use fissio_config::PipelineConfig;
+//! use fissio_core::ModelConfig;
+//!
+//! // Load config and create engine
+//! let engine = PipelineEngine::new(
+//!     config,
+//!     vec![model1, model2],
+//!     default_model,
+//!     HashMap::new(), // node model overrides
+//! );
+//!
+//! // Execute pipeline
+//! let result = engine.execute_stream("Hello!", &[]).await?;
+//! match result {
+//!     EngineOutput::Stream(stream) => { /* consume stream */ }
+//!     EngineOutput::Complete(text) => println!("{}", text),
+//! }
+//! ```
+//!
+//! # Execution Model
+//!
+//! The engine traverses the pipeline DAG starting from `input` edges:
+//!
+//! 1. **Sequential** (Direct edges) — Nodes execute one after another
+//! 2. **Parallel** (Parallel edges) — Nodes execute concurrently via `tokio::join_all`
+//! 3. **Conditional** (Router nodes) — LLM classifies input to choose path
+//!
+//! # Agentic Tool Loops
+//!
+//! Worker nodes with tools configured run an agentic loop:
+//! 1. Send message + tool schemas to LLM
+//! 2. If LLM returns tool calls, execute them
+//! 3. Send results back to LLM
+//! 4. Repeat until LLM returns final content (max 10 iterations)
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use agent_config::{EdgeConfig, EdgeEndpoint, EdgeType, NodeConfig, NodeType, PipelineConfig};
-use agent_core::{AgentError, ModelConfig};
-use agent_network::{ChatResponse, LlmStream, ToolCall, ToolSchema, UnifiedLlmClient};
-use agent_tools::ToolRegistry;
+use fissio_config::{EdgeConfig, EdgeEndpoint, EdgeType, NodeConfig, NodeType, PipelineConfig};
+use fissio_core::{AgentError, ModelConfig};
+use fissio_llm::{ChatResponse, LlmStream, ToolCall, ToolSchema, UnifiedLlmClient};
+use fissio_tools::ToolRegistry;
 use async_recursion::async_recursion;
 use futures::future::join_all;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 /// Input data passed to a node during execution.
+///
+/// Contains the user's message, conversation history, and accumulated
+/// context from previous nodes in the pipeline.
 #[derive(Debug, Clone, Default)]
 pub struct NodeInput {
+    /// The original user input that started pipeline execution.
     pub user_input: String,
-    pub history: Vec<agent_core::Message>,
+    /// Conversation history for multi-turn interactions.
+    pub history: Vec<fissio_core::Message>,
+    /// Key-value context accumulated from previous nodes.
     pub context: HashMap<String, String>,
 }
 
 /// Output produced by a node after execution.
+///
+/// For most nodes, `next_nodes` is empty. Router nodes populate it
+/// with the target node IDs determined by classification.
 #[derive(Debug, Clone)]
 pub struct NodeOutput {
+    /// The content produced by this node.
     pub content: String,
+    /// Target nodes for routing (only set by Router nodes).
     pub next_nodes: Vec<String>,
 }
 
-/// Result of pipeline execution: either a stream or complete response.
+/// Result of pipeline execution.
+///
+/// Depending on pipeline structure, execution may return a stream
+/// for real-time output or a complete response string.
 pub enum EngineOutput {
+    /// Streaming response for real-time output.
     Stream(LlmStream),
+    /// Complete response after pipeline finishes.
     Complete(String),
 }
 
-/// Resolves model IDs to ModelConfig, with fallback to default.
+/// Resolves model IDs to their configurations.
+///
+/// Used by the engine to look up model configs for nodes that specify
+/// a model ID. Falls back to a default model when no match is found.
 pub struct ModelResolver {
     models: HashMap<String, ModelConfig>,
     default_model: ModelConfig,
@@ -58,7 +119,17 @@ impl ModelResolver {
     }
 }
 
-/// Executes pipeline configurations as directed graphs.
+/// Core pipeline execution engine.
+///
+/// Executes [`PipelineConfig`] definitions as directed acyclic graphs,
+/// handling parallel execution, conditional routing, and agentic tool loops.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let engine = PipelineEngine::new(config, models, default_model, HashMap::new());
+/// let result = engine.execute_stream("Hello!", &[]).await?;
+/// ```
 pub struct PipelineEngine {
     config: PipelineConfig,
     resolver: ModelResolver,
@@ -131,7 +202,7 @@ impl PipelineEngine {
     pub async fn execute_stream(
         &self,
         user_input: &str,
-        history: &[agent_core::Message],
+        history: &[fissio_core::Message],
     ) -> Result<EngineOutput, AgentError> {
         info!("╔══════════════════════════════════════════════════════════════");
         info!("║ PIPELINE: {}", self.config.name);
@@ -188,7 +259,7 @@ impl PipelineEngine {
         edge: &EdgeConfig,
         context: &Arc<RwLock<HashMap<String, String>>>,
         executed: &mut HashSet<String>,
-        history: &[agent_core::Message],
+        history: &[fissio_core::Message],
         step: &Arc<RwLock<usize>>,
     ) -> Result<(), AgentError> {
         let target_ids = edge.to.as_vec();
@@ -210,7 +281,7 @@ impl PipelineEngine {
         target_ids: Vec<&str>,
         context: &Arc<RwLock<HashMap<String, String>>>,
         executed: &mut HashSet<String>,
-        history: &[agent_core::Message],
+        history: &[fissio_core::Message],
         step: &Arc<RwLock<usize>>,
     ) -> Result<(), AgentError> {
         info!("╠══════════════════════════════════════════════════════════════");
@@ -288,7 +359,7 @@ impl PipelineEngine {
         target_ids: Vec<&str>,
         context: &Arc<RwLock<HashMap<String, String>>>,
         executed: &mut HashSet<String>,
-        history: &[agent_core::Message],
+        history: &[fissio_core::Message],
         step: &Arc<RwLock<usize>>,
     ) -> Result<(), AgentError> {
         for node_id in target_ids {

@@ -6,7 +6,7 @@
 use std::pin::Pin;
 use std::time::Instant;
 
-use agent_core::{AgentError, Message, MessageRole};
+use fissio_core::{AgentError, Message, MessageRole};
 use async_openai::{
     config::OpenAIConfig,
     types::{

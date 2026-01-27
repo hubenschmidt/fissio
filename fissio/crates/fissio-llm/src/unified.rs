@@ -1,6 +1,6 @@
 //! Unified LLM client that routes to the appropriate provider based on model name.
 
-use agent_core::{AgentError, Message};
+use fissio_core::{AgentError, Message};
 use async_openai::types::ChatCompletionRequestMessage;
 
 use crate::anthropic::{AnthropicClient, AnthropicToolMessage};

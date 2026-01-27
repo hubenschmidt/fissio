@@ -1,0 +1,18 @@
+[package]
+name = "fissio-llm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "LLM provider abstraction for fissio"
+
+[dependencies]
+fissio-core = { workspace = true }
+async-openai = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }

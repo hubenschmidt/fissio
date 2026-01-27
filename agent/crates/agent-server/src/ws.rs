@@ -7,10 +7,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use agent_config::{EdgeConfig, EdgeEndpoint, EdgeType, NodeConfig, NodeType, PipelineConfig};
-use agent_core::{Message as CoreMessage, ModelConfig};
-use agent_engine::{EngineOutput, PipelineEngine};
-use agent_network::{LlmStream, OllamaClient, OllamaMetrics, StreamChunk, UnifiedLlmClient};
+use fissio_config::{EdgeConfig, EdgeEndpoint, EdgeType, NodeConfig, NodeType, PipelineConfig};
+use fissio_core::{Message as CoreMessage, ModelConfig};
+use fissio_engine::{EngineOutput, PipelineEngine};
+use fissio_llm::{LlmStream, OllamaClient, OllamaMetrics, StreamChunk, UnifiedLlmClient};
 use axum::{
     extract::{
         ws::{Message, WebSocket},
