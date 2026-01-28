@@ -125,12 +125,14 @@ export default function Chat() {
       id: draft.id || `composed_${Date.now()}`,
       name: draft.name || 'Composed Pipeline',
       description: draft.description || '',
-      nodes: (draft.nodes || []).map((n) => ({
-        id: n.id!,
-        node_type: n.node_type!,
-        model: n.model ?? null,
-        prompt: n.prompt ?? null
-      })),
+      nodes: (draft.nodes || [])
+        .filter((n): n is typeof n & { id: string; node_type: string } => !!n.id && !!n.node_type)
+        .map((n) => ({
+          id: n.id,
+          node_type: n.node_type,
+          model: n.model ?? null,
+          prompt: n.prompt ?? null
+        })),
       edges: draft.edges || []
     };
 

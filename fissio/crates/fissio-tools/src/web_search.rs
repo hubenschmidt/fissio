@@ -102,7 +102,10 @@ impl Tool for WebSearchTool {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = response.text().await.unwrap_or_else(|e| {
+                tracing::warn!("Failed to read error response body: {}", e);
+                String::new()
+            });
             return Err(ToolError::ExecutionFailed(format!(
                 "Tavily API error: {} - {}",
                 status, body

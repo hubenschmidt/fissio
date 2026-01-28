@@ -8,10 +8,20 @@ use crate::client::{ChatResponse, LlmClient};
 use crate::{LlmResponse, LlmStream};
 
 /// Provider type determined from model name.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum ProviderType {
     OpenAI,
     Anthropic,
+}
+
+/// Model prefixes that map to Anthropic provider.
+/// Add new prefixes here to support additional Anthropic models.
+const ANTHROPIC_PREFIXES: &[&str] = &["claude-"];
+
+/// Detects provider from model name using prefix matching.
+fn detect_provider(model: &str) -> ProviderType {
+    let is_anthropic = ANTHROPIC_PREFIXES.iter().any(|prefix| model.starts_with(prefix));
+    if is_anthropic { ProviderType::Anthropic } else { ProviderType::OpenAI }
 }
 
 /// Unified client that routes requests to OpenAI or Anthropic based on model name.
@@ -24,21 +34,11 @@ pub struct UnifiedLlmClient {
 impl UnifiedLlmClient {
     /// Creates a new unified client, detecting provider from model name.
     pub fn new(model: &str, api_base: Option<&str>) -> Self {
-        let provider = match model.starts_with("claude-") {
-            true => ProviderType::Anthropic,
-            false => ProviderType::OpenAI,
-        };
-
         Self {
             model: model.to_string(),
-            provider,
+            provider: detect_provider(model),
             api_base: api_base.map(String::from),
         }
-    }
-
-    /// Returns true if this client is configured for Anthropic.
-    pub fn is_anthropic(&self) -> bool {
-        matches!(self.provider, ProviderType::Anthropic)
     }
 
     /// Sends a non-streaming chat request and returns the complete response.
@@ -142,8 +142,7 @@ impl UnifiedLlmClient {
                     let content = match &tool_msg.content {
                         async_openai::types::ChatCompletionRequestToolMessageContent::Text(t) => t.clone(),
                         async_openai::types::ChatCompletionRequestToolMessageContent::Array(parts) => {
-                            parts.iter().map(|p| {
-                                let async_openai::types::ChatCompletionRequestToolMessageContentPart::Text(t) = p;
+                            parts.iter().map(|async_openai::types::ChatCompletionRequestToolMessageContentPart::Text(t)| {
                                 t.text.clone()
                             }).collect::<Vec<_>>().join("\n")
                         }

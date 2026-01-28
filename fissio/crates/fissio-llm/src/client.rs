@@ -205,7 +205,10 @@ impl LlmClient {
                     .into_iter()
                     .map(|tc| {
                         let args: serde_json::Value = serde_json::from_str(&tc.function.arguments)
-                            .unwrap_or(serde_json::Value::Null);
+                            .unwrap_or_else(|e| {
+                                tracing::warn!("Failed to parse tool call arguments: {}", e);
+                                serde_json::Value::Null
+                            });
                         ToolCall {
                             id: tc.id,
                             name: tc.function.name,

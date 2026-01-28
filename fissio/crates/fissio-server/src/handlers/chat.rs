@@ -80,10 +80,9 @@ pub async fn chat(
         let metadata = build_metadata(&result, start.elapsed().as_millis() as u64);
 
         let end_data = SseData::End { metadata };
-        let _ = tx.send(Ok(Event::default()
-            .event("end")
-            .json_data(&end_data)
-            .unwrap())).await;
+        if let Ok(event) = Event::default().event("end").json_data(&end_data) {
+            let _ = tx.send(Ok(event)).await;
+        }
     });
 
     Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default())
@@ -91,10 +90,20 @@ pub async fn chat(
 
 async fn send_chunk(tx: &EventSender, content: &str) {
     let data = SseData::Stream { content: content.to_string() };
-    let _ = tx.send(Ok(Event::default()
-        .event("stream")
-        .json_data(&data)
-        .unwrap())).await;
+    if let Ok(event) = Event::default().event("stream").json_data(&data) {
+        let _ = tx.send(Ok(event)).await;
+    }
+}
+
+/// Consumes a stream and sends chunks to the SSE channel.
+/// Returns token counts from the stream.
+async fn stream_to_sse(tx: &EventSender, stream: fissio_llm::LlmStream) -> (u32, u32) {
+    let tx_clone = tx.clone();
+    consume_stream(stream, move |chunk| {
+        let tx = tx_clone.clone();
+        let chunk = chunk.to_string();
+        tokio::spawn(async move { send_chunk(&tx, &chunk).await });
+    }).await
 }
 
 async fn execute_chat(tx: &EventSender, req: &ChatRequest, state: &ServerState) -> StreamResult {
@@ -133,11 +142,7 @@ async fn execute_ollama_chat(
 ) -> StreamResult {
     match execute_ollama_stream(model, history, message, system_prompt).await {
         Ok((stream, metrics)) => {
-            let (input_tokens, output_tokens) = consume_stream(stream, |chunk| {
-                let tx = tx.clone();
-                let chunk = chunk.to_string();
-                tokio::spawn(async move { send_chunk(&tx, &chunk).await });
-            }).await;
+            let (input_tokens, output_tokens) = stream_to_sse(tx, stream).await;
             StreamResult { input_tokens, output_tokens, ollama_metrics: Some(metrics) }
         }
         Err(e) => {
@@ -157,12 +162,7 @@ async fn execute_direct(
 ) -> StreamResult {
     match execute_direct_chat(model, history, message, system_prompt).await {
         Ok(stream) => {
-            let tx_clone = tx.clone();
-            let (input_tokens, output_tokens) = consume_stream(stream, move |chunk| {
-                let tx = tx_clone.clone();
-                let chunk = chunk.to_string();
-                tokio::spawn(async move { send_chunk(&tx, &chunk).await });
-            }).await;
+            let (input_tokens, output_tokens) = stream_to_sse(tx, stream).await;
             StreamResult { input_tokens, output_tokens, ollama_metrics: None }
         }
         Err(e) => {
@@ -184,12 +184,7 @@ async fn execute_pipeline_chat(
 ) -> StreamResult {
     match execute_pipeline(config, message, history, &state.models, default_model, node_overrides).await {
         Ok(EngineOutput::Stream(stream)) => {
-            let tx_clone = tx.clone();
-            let (input_tokens, output_tokens) = consume_stream(stream, move |chunk| {
-                let tx = tx_clone.clone();
-                let chunk = chunk.to_string();
-                tokio::spawn(async move { send_chunk(&tx, &chunk).await });
-            }).await;
+            let (input_tokens, output_tokens) = stream_to_sse(tx, stream).await;
             StreamResult { input_tokens, output_tokens, ollama_metrics: None }
         }
         Ok(EngineOutput::Complete(response)) => {

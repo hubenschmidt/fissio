@@ -9,10 +9,7 @@ use serde::Serialize;
 
 /// Application-level errors with HTTP status code mapping.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum AppError {
-    NotFound(String),
-    BadRequest(String),
     Internal(String),
 }
 
@@ -48,11 +45,7 @@ struct ErrorResponse {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-        };
-        (status, Json(ErrorResponse { error: message })).into_response()
+        let AppError::Internal(message) = self;
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: message })).into_response()
     }
 }

@@ -6,7 +6,7 @@
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-use fissio_core::{AgentError, Message, MessageRole, ModelConfig};
+use fissio_core::{AgentError, Message, ModelConfig};
 use futures::Stream;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -212,11 +212,7 @@ impl OllamaClient {
 
         for msg in history {
             messages.push(OllamaMessage {
-                role: match msg.role {
-                    MessageRole::User => "user",
-                    MessageRole::Assistant => "assistant",
-                }
-                .to_string(),
+                role: msg.role.as_str().to_string(),
                 content: msg.content.clone(),
             });
         }

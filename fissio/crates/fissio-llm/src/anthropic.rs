@@ -1,6 +1,6 @@
 //! Anthropic Claude API client with streaming and tool support.
 
-use fissio_core::{AgentError, Message, MessageRole, ToolCall, ToolSchema};
+use fissio_core::{AgentError, Message, ToolCall, ToolSchema};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
@@ -10,6 +10,19 @@ use crate::{LlmMetrics, LlmResponse, LlmStream, StreamChunk};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+
+/// Checks HTTP response status and returns an error if not successful.
+async fn check_response(response: reqwest::Response) -> Result<reqwest::Response, AgentError> {
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(AgentError::LlmError(format!(
+            "Anthropic API error {}: {}",
+            status, body
+        )));
+    }
+    Ok(response)
+}
 
 #[derive(Serialize)]
 struct AnthropicMessage {
@@ -154,6 +167,15 @@ impl AnthropicClient {
         }
     }
 
+    /// Creates a request builder with standard Anthropic headers.
+    fn request(&self) -> reqwest::RequestBuilder {
+        self.client
+            .post(ANTHROPIC_API_URL)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", ANTHROPIC_VERSION)
+            .header("content-type", "application/json")
+    }
+
     /// Sends a non-streaming chat request and returns the complete response.
     pub async fn chat(&self, system_prompt: &str, user_input: &str) -> Result<LlmResponse, AgentError> {
         let start = std::time::Instant::now();
@@ -170,24 +192,13 @@ impl AnthropicClient {
         };
 
         let response = self
-            .client
-            .post(ANTHROPIC_API_URL)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("content-type", "application/json")
+            .request()
             .json(&request)
             .send()
             .await
             .map_err(|e| AgentError::LlmError(e.to_string()))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(AgentError::LlmError(format!(
-                "Anthropic API error {}: {}",
-                status, body
-            )));
-        }
+        let response = check_response(response).await?;
 
         let resp: NonStreamResponse = response
             .json()
@@ -218,10 +229,7 @@ impl AnthropicClient {
         let mut messages: Vec<AnthropicMessage> = history
             .iter()
             .map(|msg| AnthropicMessage {
-                role: match msg.role {
-                    MessageRole::User => "user",
-                    MessageRole::Assistant => "assistant",
-                },
+                role: msg.role.as_str(),
                 content: msg.content.clone(),
             })
             .collect();
@@ -240,24 +248,13 @@ impl AnthropicClient {
         };
 
         let response = self
-            .client
-            .post(ANTHROPIC_API_URL)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("content-type", "application/json")
+            .request()
             .json(&request)
             .send()
             .await
             .map_err(|e| AgentError::LlmError(e.to_string()))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(AgentError::LlmError(format!(
-                "Anthropic API error {}: {}",
-                status, body
-            )));
-        }
+        let response = check_response(response).await?;
 
         let byte_stream = response.bytes_stream();
 
@@ -363,24 +360,13 @@ impl AnthropicClient {
         };
 
         let response = self
-            .client
-            .post(ANTHROPIC_API_URL)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", ANTHROPIC_VERSION)
-            .header("content-type", "application/json")
+            .request()
             .json(&request)
             .send()
             .await
             .map_err(|e| AgentError::LlmError(e.to_string()))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(AgentError::LlmError(format!(
-                "Anthropic API error {}: {}",
-                status, body
-            )));
-        }
+        let response = check_response(response).await?;
 
         let resp: ToolResponse = response
             .json()

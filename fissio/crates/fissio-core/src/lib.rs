@@ -76,6 +76,16 @@ pub enum MessageRole {
     Assistant,
 }
 
+impl MessageRole {
+    /// Returns the role as a lowercase string slice.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+        }
+    }
+}
+
 /// A single message in a conversation history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {

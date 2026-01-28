@@ -17,10 +17,7 @@ fissio-tools = { workspace = true }
 fissio-editor = { workspace = true, optional = true }
 
 [features]
-default = ["openai", "anthropic", "tools-web"]
-openai = []
-anthropic = []
-tools-web = []
+default = []
 editor = ["dep:fissio-editor"]
 
 [dev-dependencies]

@@ -1,6 +1,32 @@
 import { createSignal, createMemo, createEffect, onMount, onCleanup, For, Show } from 'solid-js';
 import type { PipelineInfo, NodeInfo, EdgeInfo, ModelConfig, ToolSchema } from '../types';
 
+// Dagre graph library types
+interface DagreNode {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface DagreEdge {
+  points: { x: number; y: number }[];
+}
+
+interface DagreGraph {
+  setGraph(options: { rankdir: string; nodesep: number; ranksep: number; marginx: number; marginy: number }): void;
+  setDefaultEdgeLabel(fn: () => object): void;
+  setNode(id: string, options: { width: number; height: number }): void;
+  setEdge(from: string, to: string): void;
+  node(id: string): DagreNode | undefined;
+  edge(from: string, to: string): DagreEdge | undefined;
+}
+
+interface DagreModule {
+  graphlib: { Graph: new () => DagreGraph };
+  layout(g: DagreGraph): void;
+}
+
 type Props = {
   config: PipelineInfo;
   models: ModelConfig[];
@@ -34,8 +60,7 @@ type LayoutNode = { id: string; x: number; y: number; type: string };
 type LayoutEdge = { from: string; to: string; points: { x: number; y: number }[]; edgeType: string; index: number };
 type Layout = { nodes: LayoutNode[]; edges: LayoutEdge[]; width: number; height: number };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let dagre: any = null;
+let dagre: DagreModule | null = null;
 
 export default function PipelineEditor(props: Props) {
   const [dagreReady, setDagreReady] = createSignal(false);
@@ -93,16 +118,15 @@ export default function PipelineEditor(props: Props) {
     const posMap: Record<string, { x: number; y: number }> = {};
     nodes.forEach(n => { posMap[n.id] = { x: n.x, y: n.y }; });
 
-    const result: LayoutEdge[] = [];
-    (edges || []).forEach((e, idx) => {
+    return (edges || []).flatMap((e, idx) => {
       const froms = Array.isArray(e.from) ? e.from : [e.from];
       const tos = Array.isArray(e.to) ? e.to : [e.to];
-      froms.forEach(f => {
-        tos.forEach(t => {
+      return froms.flatMap(f =>
+        tos.flatMap(t => {
           const fromPos = posMap[f];
           const toPos = posMap[t];
-          if (!fromPos || !toPos) return;
-          result.push({
+          if (!fromPos || !toPos) return [];
+          return [{
             from: f,
             to: t,
             points: [
@@ -111,11 +135,10 @@ export default function PipelineEditor(props: Props) {
             ],
             edgeType: e.edge_type || 'direct',
             index: idx
-          });
-        });
-      });
+          }];
+        })
+      );
     });
-    return result;
   };
 
   const computeFallbackLayout = (nodeList: NodeInfo[], edgeList: EdgeInfo[], hasInput: boolean, hasOutput: boolean): Layout => {
@@ -144,16 +167,15 @@ export default function PipelineEditor(props: Props) {
       nodePositions['output'] = pos;
     }
 
-    const fallbackEdges: LayoutEdge[] = [];
-    edgeList.forEach((e, idx) => {
+    const fallbackEdges: LayoutEdge[] = edgeList.flatMap((e, idx) => {
       const froms = Array.isArray(e.from) ? e.from : [e.from];
       const tos = Array.isArray(e.to) ? e.to : [e.to];
-      froms.forEach(f => {
-        tos.forEach(t => {
+      return froms.flatMap(f =>
+        tos.flatMap(t => {
           const fromPos = nodePositions[f];
           const toPos = nodePositions[t];
-          if (!fromPos || !toPos) return;
-          fallbackEdges.push({
+          if (!fromPos || !toPos) return [];
+          return [{
             from: f,
             to: t,
             points: [
@@ -162,9 +184,9 @@ export default function PipelineEditor(props: Props) {
             ],
             edgeType: e.edge_type || 'direct',
             index: idx
-          });
-        });
-      });
+          }];
+        })
+      );
     });
 
     return { nodes: allNodes, edges: fallbackEdges, width: cols * 180 + 100, height: Math.ceil((nodeList.length + 2) / cols) * 100 + 100 };
@@ -208,18 +230,16 @@ export default function PipelineEditor(props: Props) {
         if (n) layoutNodes.push({ id: 'output', x: n.x, y: n.y, type: 'output' });
       }
 
-      const layoutEdges: LayoutEdge[] = [];
-      edgeList.forEach((e, idx) => {
+      const layoutEdges: LayoutEdge[] = edgeList.flatMap((e, idx) => {
         const froms = Array.isArray(e.from) ? e.from : [e.from];
         const tos = Array.isArray(e.to) ? e.to : [e.to];
-        froms.forEach(f => {
-          tos.forEach(t => {
+        return froms.flatMap(f =>
+          tos.flatMap(t => {
             const edge = g.edge(f, t);
-            if (edge?.points) {
-              layoutEdges.push({ from: f, to: t, points: edge.points, edgeType: e.edge_type || 'direct', index: idx });
-            }
-          });
-        });
+            if (!edge?.points) return [];
+            return [{ from: f, to: t, points: edge.points, edgeType: e.edge_type || 'direct', index: idx }];
+          })
+        );
       });
 
       const info = g.graph();
@@ -250,8 +270,7 @@ export default function PipelineEditor(props: Props) {
 
   onMount(async () => {
     loadPositionsFromConfig();
-    // @ts-ignore
-    const mod = await import('https://esm.sh/@dagrejs/dagre@1.1.4');
+    const mod = await import(/* @vite-ignore */ 'https://esm.sh/@dagrejs/dagre@1.1.4') as { default: DagreModule };
     dagre = mod.default;
     setDagreReady(true);
   });
@@ -281,6 +300,12 @@ export default function PipelineEditor(props: Props) {
     if (selected) return '#3b82f6';
     if (type === 'feedback') return '#ef4444';
     return '#888';
+  };
+
+  const edgeMarker = (type: string, selected: boolean): string => {
+    if (selected) return 'url(#arrowhead-sel)';
+    if (type === 'feedback') return 'url(#arrowhead-feedback)';
+    return 'url(#arrowhead)';
   };
 
   const applyTemplate = (templateId: string) => {
@@ -393,7 +418,8 @@ export default function PipelineEditor(props: Props) {
   };
 
   const onDrag = (e: MouseEvent) => {
-    if (!draggingNodeId() || !svgElement) return;
+    const nodeId = draggingNodeId();
+    if (!nodeId || !svgElement) return;
     const pt = svgElement.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
@@ -404,7 +430,7 @@ export default function PipelineEditor(props: Props) {
     const offset = dragOffset();
     setNodePositionOverrides({
       ...nodePositionOverrides(),
-      [draggingNodeId()!]: { x: svgP.x - offset.x, y: svgP.y - offset.y }
+      [nodeId]: { x: svgP.x - offset.x, y: svgP.y - offset.y }
     });
   };
 
@@ -467,7 +493,7 @@ export default function PipelineEditor(props: Props) {
                 stroke={edgeColor(edge.edgeType, selectedEdgeIndex() === edge.index)}
                 stroke-width={selectedEdgeIndex() === edge.index ? 2.5 : 2}
                 stroke-dasharray={edgeDash(edge.edgeType)}
-                marker-end={selectedEdgeIndex() === edge.index ? 'url(#arrowhead-sel)' : edge.edgeType === 'feedback' ? 'url(#arrowhead-feedback)' : 'url(#arrowhead)'}
+                marker-end={edgeMarker(edge.edgeType, selectedEdgeIndex() === edge.index)}
                 class="edge"
                 onClick={() => selectEdge(edge.index)}
                 onKeyDown={(e) => e.key === 'Enter' && selectEdge(edge.index)}
@@ -613,11 +639,11 @@ export default function PipelineEditor(props: Props) {
                     </label>
                     <label>
                       <span>Type</span>
-                      <select value={edge().edge_type || 'direct'} onChange={(e) => selectedEdgeIndex() !== null && updateEdgeType(selectedEdgeIndex()!, e.currentTarget.value)}>
+                      <select value={edge().edge_type || 'direct'} onChange={(e) => { const idx = selectedEdgeIndex(); if (idx !== null) updateEdgeType(idx, e.currentTarget.value); }}>
                         <For each={EDGE_TYPES}>{(t) => <option value={t}>{t}</option>}</For>
                       </select>
                     </label>
-                    <button class="delete-btn" onClick={() => selectedEdgeIndex() !== null && removeEdge(selectedEdgeIndex()!)}>Delete Edge</button>
+                    <button class="delete-btn" onClick={() => { const idx = selectedEdgeIndex(); if (idx !== null) removeEdge(idx); }}>Delete Edge</button>
                   </div>
                 )}
               </Show>

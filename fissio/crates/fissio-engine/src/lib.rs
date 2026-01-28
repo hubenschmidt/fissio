@@ -100,22 +100,24 @@ pub enum EngineOutput {
 /// Used by the engine to look up model configs for nodes that specify
 /// a model ID. Falls back to a default model when no match is found.
 pub struct ModelResolver {
-    models: HashMap<String, ModelConfig>,
-    default_model: ModelConfig,
+    models: HashMap<String, Arc<ModelConfig>>,
+    default_model: Arc<ModelConfig>,
 }
 
 impl ModelResolver {
     /// Creates a resolver with available models and a default fallback.
     pub fn new(models: Vec<ModelConfig>, default: ModelConfig) -> Self {
-        let map = models.into_iter().map(|m| (m.id.clone(), m)).collect();
-        Self { models: map, default_model: default }
+        let map = models.into_iter().map(|m| (m.id.clone(), Arc::new(m))).collect();
+        Self { models: map, default_model: Arc::new(default) }
     }
 
     /// Resolves a model ID to its config, or returns the default.
-    pub fn resolve(&self, model_id: Option<&str>) -> &ModelConfig {
+    /// Returns an Arc for cheap cloning in parallel execution.
+    pub fn resolve(&self, model_id: Option<&str>) -> Arc<ModelConfig> {
         model_id
             .and_then(|id| self.models.get(id))
-            .unwrap_or(&self.default_model)
+            .cloned()
+            .unwrap_or_else(|| Arc::clone(&self.default_model))
     }
 }
 
@@ -170,7 +172,8 @@ impl PipelineEngine {
     }
 
     /// Gets the model to use for a node, considering overrides.
-    fn get_node_model(&self, node: &NodeConfig) -> &ModelConfig {
+    /// Returns Arc for cheap cloning in parallel execution.
+    fn get_node_model(&self, node: &NodeConfig) -> Arc<ModelConfig> {
         let model_id = self.node_overrides
             .get(&node.id)
             .or(node.model.as_ref());
@@ -275,7 +278,11 @@ impl PipelineEngine {
         self.execute_sequential(target_ids, context, executed, history, step).await
     }
 
-    /// Executes nodes in parallel.
+    /// Executes multiple nodes concurrently using `tokio::join_all`.
+    ///
+    /// Each node runs independently with its own model and input context.
+    /// Results are collected and stored in the shared context map.
+    /// Router node decisions are tracked to filter subsequent edge processing.
     async fn execute_parallel(
         &self,
         target_ids: Vec<&str>,
@@ -340,7 +347,11 @@ impl PipelineEngine {
         Ok(())
     }
 
-    /// Executes nodes sequentially.
+    /// Executes nodes one at a time in order.
+    ///
+    /// Each node receives input from previously executed nodes via the context map.
+    /// Errors in any node abort execution and propagate up.
+    /// Router decisions are applied to filter which outgoing edges to follow.
     async fn execute_sequential(
         &self,
         target_ids: Vec<&str>,
@@ -365,7 +376,7 @@ impl PipelineEngine {
             };
 
             let model = self.get_node_model(node);
-            let output = execute_node(node_id, node.node_type, model, node.prompt.as_deref(), &input, &node.tools, &self.tool_registry, current_step, &outgoing_targets).await?;
+            let output = execute_node(node_id, node.node_type, &model, node.prompt.as_deref(), &input, &node.tools, &self.tool_registry, current_step, &outgoing_targets).await?;
 
             context.write().await.insert(node_id.to_string(), output.content.clone());
             executed.insert(node_id.to_string());
@@ -409,22 +420,18 @@ impl PipelineEngine {
         history: &[fissio_core::Message],
         step: &Arc<RwLock<usize>>,
     ) -> Result<(), AgentError> {
-        for next_edge in self.get_outgoing_edges(node_id) {
-            let edge_targets = next_edge.to.as_vec();
+        let edges_to_process: Vec<_> = self.get_outgoing_edges(node_id)
+            .into_iter()
+            .filter(|edge| {
+                let targets = edge.to.as_vec();
+                let none_executed = !targets.iter().any(|t: &&str| executed.contains(*t));
+                let matches_router = router_targets.is_empty() ||
+                    targets.iter().any(|t: &&str| router_targets.contains(&t.to_string()));
+                none_executed && matches_router
+            })
+            .collect();
 
-            // Skip if any target already executed
-            if edge_targets.iter().any(|t| executed.contains(*t)) {
-                continue;
-            }
-
-            // If router returned specific targets, only follow matching edges
-            if !router_targets.is_empty() {
-                let should_follow = edge_targets.iter().any(|t| router_targets.contains(&t.to_string()));
-                if !should_follow {
-                    continue;
-                }
-            }
-
+        for next_edge in edges_to_process {
             self.process_edge(next_edge, context, executed, history, step).await?;
         }
         Ok(())
@@ -520,6 +527,13 @@ async fn execute_router(
 }
 
 /// Executes an LLM node, potentially with an agentic tool loop.
+///
+/// If no tools are configured, performs a simple chat completion.
+/// With tools, runs an iterative loop:
+/// 1. Send message + tool schemas to LLM
+/// 2. If LLM returns tool calls, execute them via the registry
+/// 3. Send tool results back to LLM
+/// 4. Repeat until LLM returns final content (max 10 iterations)
 async fn execute_node_with_tools(
     model: &ModelConfig,
     prompt: Option<&str>,

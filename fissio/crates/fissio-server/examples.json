@@ -1,0 +1,86 @@
+[
+  {
+    "id": "blog-post-writer",
+    "name": "Blog Post Writer",
+    "description": "Sequential content creation: outline -> draft -> polish. Demonstrates prompt chaining for iterative refinement.",
+    "nodes": [
+      { "id": "llm1", "node_type": "llm", "prompt": "Create a structured outline with an engaging intro, 3 main points with supporting details, and a compelling conclusion." },
+      { "id": "gate1", "node_type": "gate" },
+      { "id": "llm2", "node_type": "llm", "prompt": "Expand the outline into a full draft. Write engaging prose, add examples, and ensure smooth transitions between sections." },
+      { "id": "llm3", "node_type": "llm", "prompt": "Polish the draft: improve flow, strengthen the opening hook, add a call-to-action, and ensure consistent tone throughout." }
+    ],
+    "edges": [
+      { "from": "input", "to": "llm1" },
+      { "from": "llm1", "to": "gate1" },
+      { "from": "gate1", "to": "llm2" },
+      { "from": "llm2", "to": "llm3" },
+      { "from": "llm3", "to": "output" }
+    ]
+  },
+  {
+    "id": "customer-support",
+    "name": "Customer Support Bot",
+    "description": "Routes queries to specialized handlers. Demonstrates routing for domain-specific expertise.",
+    "nodes": [
+      { "id": "router", "node_type": "router" },
+      { "id": "technical_llm", "node_type": "llm", "prompt": "You are a technical support specialist. Diagnose issues systematically, provide step-by-step troubleshooting, and escalate complex problems with detailed notes.", "tools": ["fetch_url"] },
+      { "id": "billing_llm", "node_type": "llm", "prompt": "You are a billing specialist. Handle payment inquiries, explain charges clearly, process refund requests, and resolve subscription issues professionally." },
+      { "id": "general_llm", "node_type": "llm", "prompt": "You are a general support agent. Answer FAQs warmly, guide users to resources, and identify when specialized help is needed." }
+    ],
+    "edges": [
+      { "from": "input", "to": "router" },
+      { "from": "router", "to": ["technical_llm", "billing_llm", "general_llm"], "edge_type": "conditional" },
+      { "from": ["technical_llm", "billing_llm", "general_llm"], "to": "output" }
+    ]
+  },
+  {
+    "id": "document-reviewer",
+    "name": "Document Reviewer",
+    "description": "Parallel analysis of grammar, style, and facts. Demonstrates parallelization for comprehensive coverage.",
+    "nodes": [
+      { "id": "coordinator", "node_type": "coordinator", "prompt": "Break the document into logical sections for parallel review." },
+      { "id": "grammar_llm", "node_type": "llm", "prompt": "Review for grammar, spelling, and punctuation. List each issue with its location and suggested correction." },
+      { "id": "style_llm", "node_type": "llm", "prompt": "Evaluate writing style: tone consistency, clarity, readability, and engagement. Suggest specific improvements." },
+      { "id": "facts_llm", "node_type": "llm", "prompt": "Verify factual claims and check for logical inconsistencies. Flag any statements that need citations or clarification.", "tools": ["web_search", "fetch_url"] },
+      { "id": "aggregator", "node_type": "aggregator", "prompt": "Combine all reviews into a prioritized feedback report. Group by severity: critical, important, minor suggestions." }
+    ],
+    "edges": [
+      { "from": "input", "to": "coordinator" },
+      { "from": "coordinator", "to": ["grammar_llm", "style_llm", "facts_llm"], "edge_type": "parallel" },
+      { "from": ["grammar_llm", "style_llm", "facts_llm"], "to": "aggregator" },
+      { "from": "aggregator", "to": "output" }
+    ]
+  },
+  {
+    "id": "research-assistant",
+    "name": "Research Assistant",
+    "description": "Dynamic task decomposition for complex research. Demonstrates orchestrator-worker for adaptive workflows.",
+    "nodes": [
+      { "id": "orchestrator", "node_type": "orchestrator", "prompt": "Analyze the research question. Identify key aspects to investigate. Dispatch workers for: foundational context, current data/trends, and comparative analysis." },
+      { "id": "context_worker", "node_type": "worker", "prompt": "Research the historical background and foundational concepts. Provide context that frames the current state of knowledge.", "tools": ["web_search", "fetch_url"] },
+      { "id": "data_worker", "node_type": "worker", "prompt": "Find current statistics, recent studies, and emerging trends. Focus on data from the last 2-3 years.", "tools": ["web_search", "fetch_url"] },
+      { "id": "synthesizer", "node_type": "synthesizer", "prompt": "Synthesize all findings into a coherent research summary. Highlight key insights, note conflicting information, and suggest areas for further investigation.", "tools": ["fetch_url"] }
+    ],
+    "edges": [
+      { "from": "input", "to": "orchestrator" },
+      { "from": "orchestrator", "to": ["context_worker", "data_worker"], "edge_type": "dynamic" },
+      { "from": ["context_worker", "data_worker"], "to": "synthesizer" },
+      { "from": "synthesizer", "to": "output" }
+    ]
+  },
+  {
+    "id": "code-generator",
+    "name": "Code Generator",
+    "description": "Generate code with self-critique loop. Demonstrates evaluator-optimizer for quality assurance.",
+    "nodes": [
+      { "id": "generator", "node_type": "llm", "prompt": "Write clean, well-documented code for the request. Include error handling, input validation, and clear comments. Follow best practices for the language.", "tools": ["fetch_url"] },
+      { "id": "evaluator", "node_type": "evaluator", "prompt": "Review the generated code for: correctness, edge cases, security vulnerabilities, performance, and readability. If issues found, provide specific feedback. If code meets quality standards, approve for output." }
+    ],
+    "edges": [
+      { "from": "input", "to": "generator" },
+      { "from": "generator", "to": "evaluator" },
+      { "from": "evaluator", "to": "generator", "edge_type": "conditional" },
+      { "from": "evaluator", "to": "output" }
+    ]
+  }
+]
