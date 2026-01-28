@@ -1,14 +1,14 @@
 services:
   server:
-    build: ./fissio/crates/fissio-server
+    build: ./crates/fissio-server
     ports:
       - "8000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
-      - ./fissio/crates/fissio-server/.env
+      - ./crates/fissio-server/.env
     volumes:
-      - ./fissio:/app
+      - .:/app
       - server-target:/app/target
       - cargo-registry:/usr/local/cargo/registry
       - cargo-git:/usr/local/cargo/git
@@ -23,12 +23,12 @@ services:
     restart: unless-stopped
 
   editor:
-    build: ./fissio/crates/fissio-editor/client
+    build: ./crates/fissio-editor/client
     ports:
       - "3001:3001"
       - "24678:24678"
     volumes:
-      - ./fissio/crates/fissio-editor/client:/app
+      - ./crates/fissio-editor/client:/app
       - /app/node_modules
     command: npm run dev -- --host
     depends_on:

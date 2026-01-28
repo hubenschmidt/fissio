@@ -1,0 +1,74 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/fissio",
+    "crates/fissio-config",
+    "crates/fissio-core",
+    "crates/fissio-editor",
+    "crates/fissio-engine",
+    "crates/fissio-llm",
+    "crates/fissio-monitor",
+    "crates/fissio-server",
+    "crates/fissio-tools",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["hubenschmidt"]
+license = "MIT"
+repository = "https://github.com/hubenschmidt/fissio"
+description = "Pipeline-first agent framework for LLM-powered systems"
+keywords = ["llm", "agent", "pipeline", "ai", "orchestration"]
+categories = ["asynchronous", "web-programming"]
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.42", features = ["full"] }
+tokio-stream = "0.1"
+futures = "0.3"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# OpenAI SDK
+async-openai = "0.27"
+
+# Error handling
+thiserror = "2.0"
+
+# Async traits
+async-trait = "0.1"
+async-recursion = "1.1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# HTML parsing (for tools)
+html2text = "0.12"
+
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Server utils
+dotenvy = "0.15"
+uuid = { version = "1.11", features = ["v4", "serde"] }
+anyhow = "1.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Internal crates
+fissio-config = { path = "crates/fissio-config" }
+fissio-core = { path = "crates/fissio-core" }
+fissio-editor = { path = "crates/fissio-editor" }
+fissio-engine = { path = "crates/fissio-engine" }
+fissio-llm = { path = "crates/fissio-llm" }
+fissio-monitor = { path = "crates/fissio-monitor" }
+fissio-server = { path = "crates/fissio-server" }
+fissio-tools = { path = "crates/fissio-tools" }

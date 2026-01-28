@@ -1,0 +1,22 @@
+[package]
+name = "fissio-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Pipeline execution engine for fissio"
+
+[dependencies]
+fissio-config = { workspace = true }
+fissio-core = { workspace = true }
+fissio-llm = { workspace = true }
+fissio-monitor = { workspace = true }
+fissio-tools = { workspace = true }
+async-trait = { workspace = true }
+async-recursion = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
